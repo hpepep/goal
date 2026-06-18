@@ -33,7 +33,7 @@ def trigger_save():
 # --- FINANCIAL ENGINE ---
 @st.cache_data(ttl=3600)
 def fetch_stock_details(ticker):
-"""Fetches stock price and maps numerical BSE codes to actual company names."""
+    """Fetches stock price and maps numerical BSE codes to actual company names."""
     # Comprehensive dictionary map for common Indian Equities
     BSE_MAP = {
         "500325.BO": "Reliance Industries Ltd",
