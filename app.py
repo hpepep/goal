@@ -33,7 +33,7 @@ def trigger_save():
 # --- FINANCIAL ENGINE ---
 @st.cache_data(ttl=3600)
 def fetch_stock_details(ticker):
-    """Fetches stock price and company name description."""
+"""Fetches stock price and company name description with robust fallback logic."""
     try:
         formatted_ticker = ticker.strip().upper()
         if not (formatted_ticker.endswith(".BO") or formatted_ticker.endswith(".NS")):
@@ -42,10 +42,23 @@ def fetch_stock_details(ticker):
         stock = yf.Ticker(formatted_ticker)
         price = stock.history(period="1d")['Close'].iloc[-1]
         
+        name = None
+        # Primary Strategy: Fast Info lookup
         try:
             name = stock.fast_info['name']
         except:
-            name = formatted_ticker
+            pass
+            
+        # Secondary Strategy: Full info dictionary lookup if fast_info fails
+        if not name or name == formatted_ticker:
+            try:
+                name = stock.info.get('longName', stock.info.get('shortName', None))
+            except:
+                pass
+                
+        # Tertiary Strategy: Clean fallback name from ticker string
+        if not name:
+            name = formatted_ticker.replace(".BO", " (BSE)").replace(".NS", " (NSE)")
             
         return round(price, 2), name
     except Exception:
