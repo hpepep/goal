@@ -33,32 +33,64 @@ def trigger_save():
 # --- FINANCIAL ENGINE ---
 @st.cache_data(ttl=3600)
 def fetch_stock_details(ticker):
-    """Fetches stock price and company name description with robust fallback logic."""
+"""Fetches stock price and maps numerical BSE codes to actual company names."""
+    # Comprehensive dictionary map for common Indian Equities
+    BSE_MAP = {
+        "500325.BO": "Reliance Industries Ltd",
+        "RELIANCE.BO": "Reliance Industries Ltd",
+        "500209.BO": "Infosys Ltd",
+        "INFY.BO": "Infosys Ltd",
+        "532540.BO": "Tata Consultancy Services (TCS)",
+        "TCS.BO": "Tata Consultancy Services (TCS)",
+        "500180.BO": "HDFC Bank Ltd",
+        "HDFCBANK.BO": "HDFC Bank Ltd",
+        "532174.BO": "ICICI Bank Ltd",
+        "ICICIBANK.BO": "ICICI Bank Ltd",
+        "500696.BO": "Hindustan Unilever Ltd (HUL)",
+        "HINDUNILVR.BO": "Hindustan Unilever Ltd (HUL)",
+        "500112.BO": "State Bank of India (SBI)",
+        "SBIN.BO": "State Bank of India (SBI)",
+        "532215.BO": "Axis Bank Ltd",
+        "AXISBANK.BO": "Axis Bank Ltd",
+        "500510.BO": "Larsen & Toubro Ltd (L&T)",
+        "LT.BO": "Larsen & Toubro Ltd (L&T)",
+        "532454.BO": "Bharti Airtel Ltd",
+        "BHARTIALRTT.BO": "Bharti Airtel Ltd",
+        "500820.BO": "Asian Paints Ltd",
+        "ASIANPAINT.BO": "Asian Paints Ltd",
+        "500875.BO": "ITC Ltd",
+        "ITC.BO": "ITC Ltd"
+    }
+
     try:
         formatted_ticker = ticker.strip().upper()
         if not (formatted_ticker.endswith(".BO") or formatted_ticker.endswith(".NS")):
             formatted_ticker += ".BO"
         
+        # Pull real-time trading metrics
         stock = yf.Ticker(formatted_ticker)
         price = stock.history(period="1d")['Close'].iloc[-1]
         
-        name = None
-        # Primary Strategy: Fast Info lookup
-        try:
-            name = stock.fast_info['name']
-        except:
-            pass
-            
-        # Secondary Strategy: Full info dictionary lookup if fast_info fails
+        # Match company description
+        name = BSE_MAP.get(formatted_ticker, None)
+        
+        if not name:
+            try:
+                name = stock.fast_info['name']
+            except:
+                pass
+                
         if not name or name == formatted_ticker:
             try:
                 name = stock.info.get('longName', stock.info.get('shortName', None))
             except:
                 pass
                 
-        # Tertiary Strategy: Clean fallback name from ticker string
+        # Clean string formatting fallback if API fields return blank
         if not name:
-            name = formatted_ticker.replace(".BO", " (BSE)").replace(".NS", " (NSE)")
+            # If it's a number like 500325.BO, make it readable
+            clean_code = formatted_ticker.replace(".BO", "")
+            name = f"Equity Position: {clean_code} (BSE)"
             
         return round(price, 2), name
     except Exception:
