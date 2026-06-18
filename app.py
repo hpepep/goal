@@ -5,6 +5,7 @@ import yfinance as yf
 from mftool import Mftool
 import pandas as pd
 from datetime import datetime, date
+import re
 
 # Initialize APIs
 mf_api = Mftool()
@@ -149,6 +150,25 @@ def calculate_future_value(current_val, annual_rate, target_date_str):
     except:
         return current_val
 
+def format_indian_currency(val):
+    """Formats numeric floats into the traditional Indian system (Lakhs, Crores) format securely."""
+    try:
+        s = f"{round(val, 2):.2f}"
+        parts = s.split('.')
+        num = parts[0]
+        decimal = parts[1]
+        
+        # Regex execution grouping hundreds differently from remaining pairs
+        if len(num) > 3:
+            last_three = num[-3:]
+            remaining = num[:-3]
+            remaining_grouped = re.sub(r'(?<=.)(?=(..)+$)', ',', remaining)
+            return f"₹ {remaining_grouped},{last_three}.{decimal}"
+        else:
+            return f"₹ {num}.{decimal}"
+    except:
+        return f"₹ {round(val, 2):,}"
+
 # --- CUSTOM THEME STYLING ---
 st.set_page_config(page_title="Goal Portfolio Dashboard", layout="wide")
 
@@ -264,14 +284,14 @@ else:
             # Draw premium summary card row
             c1, c2, c3, c4 = st.columns(4)
             with c1:
-                st.markdown(f'<div class="metric-card"><div class="metric-title">Asset Portfolio Today</div><div class="metric-value">₹ {round(current_assets_sum, 2):,}</div></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="metric-card"><div class="metric-title">Asset Portfolio Today</div><div class="metric-value">{format_indian_currency(current_assets_sum)}</div></div>', unsafe_allow_html=True)
             with c2:
                 time_rem = round((datetime.strptime(target_date_str, '%Y-%m-%d').date() - date.today()).days / 365.25, 1)
                 st.markdown(f'<div class="metric-card"><div class="metric-title">Milestone Countdown</div><div class="metric-value">{time_rem} Years</div></div>', unsafe_allow_html=True)
             with c3:
                 st.markdown(f'<div class="metric-card"><div class="metric-title">Target Deadline</div><div class="metric-value">{target_date_str}</div></div>', unsafe_allow_html=True)
             with c4:
-                st.markdown(f'<div class="metric-card" style="border-color: #38A169;"><div class="metric-title" style="color: #68D391;">Projected End Corpus</div><div class="metric-value-total">₹ {round(cumulated_future_corpus, 2):,}</div></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="metric-card" style="border-color: #38A169;"><div class="metric-title" style="color: #68D391;">Projected End Corpus</div><div class="metric-value-total">{format_indian_currency(cumulated_future_corpus)}</div></div>', unsafe_allow_html=True)
 
             # --- TARGET RETURN OPTIMIZATIONS ---
             with st.expander("🛠️ Modify Asset Return Models (% Compound Assumptions)", expanded=True):
@@ -312,8 +332,8 @@ else:
                         "AMFI Code": code, 
                         "Fund Description": scheme_name, 
                         "Units Owned": details["units"], 
-                        "Live NAV (₹)": nav, 
-                        "Current Value (₹)": round(curr_val, 2)
+                        "Live NAV": format_indian_currency(nav), 
+                        "Current Value": format_indian_currency(curr_val)
                     })
                 if mf_records:
                     st.dataframe(pd.DataFrame(mf_records), use_container_width=True, hide_index=True)
@@ -351,9 +371,9 @@ else:
                         "Ticker": ticker, 
                         "Company Name": comp_name, 
                         "Shares": details["qty"], 
-                        "Avg Cost (₹)": details["buy_price"], 
-                        "Live Spot (₹)": live_price, 
-                        "Total Value (₹)": round(curr_val, 2)
+                        "Avg Cost": format_indian_currency(details["buy_price"]), 
+                        "Live Spot": format_indian_currency(live_price), 
+                        "Total Value": format_indian_currency(curr_val)
                     })
                 if eq_records:
                     st.dataframe(pd.DataFrame(eq_records), use_container_width=True, hide_index=True)
@@ -385,7 +405,13 @@ else:
                 for label, details in goal_dict["debt"].items():
                     days = calculate_days_between(details["start_date"])
                     val_today = details["principal"] * ((1 + (details["roi"] / 100)) ** (days / 365.25))
-                    debt_records.append({"Asset Description": label, "Principal (₹)": details["principal"], "Yield (%)": details["roi"], "Days Held": days, "Value Today (₹)": round(val_today, 2)})
+                    debt_records.append({
+                        "Asset Description": label, 
+                        "Principal": format_indian_currency(details["principal"]), 
+                        "Yield (%)": details["roi"], 
+                        "Days Held": days, 
+                        "Value Today": format_indian_currency(val_today)
+                    })
                 if debt_records:
                     st.dataframe(pd.DataFrame(debt_records), use_container_width=True, hide_index=True)
                 else:
@@ -397,8 +423,8 @@ else:
             
             proj_data = {
                 "Asset Structure": ["Mutual Funds Group", "Equities Portfolio", "Fixed Income / Cash Assets", "AGGREGATED PORTFOLIO"],
-                "Current Baseline Value": [f"₹ {round(total_mf_current,2):,}", f"₹ {round(total_eq_current,2):,}", f"₹ {round(total_debt_current,2):,}", f"₹ {round(current_assets_sum,2):,}"],
+                "Current Baseline Value": [format_indian_currency(total_mf_current), format_indian_currency(total_eq_current), format_indian_currency(total_debt_current), format_indian_currency(current_assets_sum)],
                 "Modeled Return Factor": [f"{goal_dict['expected_returns']['mf']}%", f"{goal_dict['expected_returns']['eq']}%", f"{goal_dict['expected_returns']['debt']}%", "—"],
-                "Terminal Forecast Value": [f"₹ {round(f_mf,2):,}", f"₹ {round(f_eq,2):,}", f"₹ {round(f_db,2):,}", f"₹ {round(cumulated_future_corpus,2):,}"]
+                "Terminal Forecast Value": [format_indian_currency(f_mf), format_indian_currency(f_eq), format_indian_currency(f_db), format_indian_currency(cumulated_future_corpus)]
             }
             st.table(pd.DataFrame(proj_data))
