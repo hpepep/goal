@@ -293,14 +293,23 @@ else:
             with c4:
                 st.markdown(f'<div class="metric-card" style="border-color: #38A169;"><div class="metric-title" style="color: #68D391;">Projected End Corpus</div><div class="metric-value-total">{format_indian_currency(cumulated_future_corpus)}</div></div>', unsafe_allow_html=True)
 
-            # --- TARGET RETURN OPTIMIZATIONS ---
-            with st.expander("🛠️ Modify Asset Return Models (% Compound Assumptions)", expanded=True):
-                r_col1, r_col2, r_col3 = st.columns(3)
+            # --- TARGET MODEL OPTIMIZATIONS (ROI & TARGET DATE) ---
+            with st.expander("🛠️ Modify Milestone Timeline & Asset Return Assumptions", expanded=True):
+                r_col1, r_col2, r_col3, r_col4 = st.columns(4)
                 with r_col1:
-                    goal_dict["expected_returns"]["mf"] = st.number_input(f"Mutual Funds ROI (%)", min_value=0.0, max_value=40.0, value=float(goal_dict["expected_returns"].get("mf", 12.0)), key=f"ui_mf_{goal_name}", on_change=trigger_save)
+                    # Parse saved string date to date object safely for the input element
+                    saved_date_obj = datetime.strptime(target_date_str, "%Y-%m-%d").date()
+                    updated_date = st.date_input("Adjust Target Date", value=saved_date_obj, min_value=date.today(), max_value=date(2076, 12, 31), key=f"ui_date_{goal_name}")
+                    if str(updated_date) != target_date_str:
+                        goal_dict["target_date"] = str(updated_date)
+                        trigger_save()
+                        st.rerun()
+                        
                 with r_col2:
-                    goal_dict["expected_returns"]["eq"] = st.number_input(f"Equities ROI (%)", min_value=0.0, max_value=40.0, value=float(goal_dict["expected_returns"].get("eq", 12.0)), key=f"ui_eq_{goal_name}", on_change=trigger_save)
+                    goal_dict["expected_returns"]["mf"] = st.number_input(f"Mutual Funds ROI (%)", min_value=0.0, max_value=40.0, value=float(goal_dict["expected_returns"].get("mf", 12.0)), key=f"ui_mf_{goal_name}", on_change=trigger_save)
                 with r_col3:
+                    goal_dict["expected_returns"]["eq"] = st.number_input(f"Equities ROI (%)", min_value=0.0, max_value=40.0, value=float(goal_dict["expected_returns"].get("eq", 12.0)), key=f"ui_eq_{goal_name}", on_change=trigger_save)
+                with r_col4:
                     goal_dict["expected_returns"]["debt"] = st.number_input(f"Debt/FD ROI (%)", min_value=0.0, max_value=40.0, value=float(goal_dict["expected_returns"].get("debt", 7.0)), key=f"ui_db_{goal_name}", on_change=trigger_save)
 
             st.markdown("###")
