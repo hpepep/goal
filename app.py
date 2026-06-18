@@ -32,25 +32,35 @@ def trigger_save():
 
 # --- FINANCIAL ENGINE ---
 @st.cache_data(ttl=3600)
-def fetch_stock_price(ticker):
+def fetch_stock_details(ticker):
+    """Fetches stock price and company name description."""
     try:
         formatted_ticker = ticker.strip().upper()
         if not (formatted_ticker.endswith(".BO") or formatted_ticker.endswith(".NS")):
             formatted_ticker += ".BO"
+        
         stock = yf.Ticker(formatted_ticker)
-        return round(stock.history(period="1d")['Close'].iloc[-1], 2)
-    except:
-        return 0.0
+        price = stock.history(period="1d")['Close'].iloc[-1]
+        
+        try:
+            name = stock.fast_info['name']
+        except:
+            name = formatted_ticker
+            
+        return round(price, 2), name
+    except Exception:
+        return 0.0, ticker
 
 @st.cache_data(ttl=3600)
-def fetch_mf_nav(scheme_code):
+def fetch_mf_details(scheme_code):
+    """Fetches live NAV and scheme name from AMFI code."""
     try:
         quote = mf_api.get_scheme_quote(scheme_code.strip())
         if quote and 'nav' in quote:
-            return float(quote['nav'])
-        return 0.0
-    except:
-        return 0.0
+            return float(quote['nav']), quote.get('scheme_name', f"MF {scheme_code}")
+        return 0.0, f"MF {scheme_code}"
+    except Exception:
+        return 0.0, scheme_code
 
 def calculate_days_between(start_date_str):
     try:
@@ -72,15 +82,12 @@ def calculate_future_value(current_val, annual_rate, target_date_str):
 # --- CUSTOM THEME STYLING (Retirement Dashboard Style) ---
 st.set_page_config(page_title="Goal Portfolio Dashboard", layout="wide")
 
-# Custom CSS injection for sleek dark borders, soft cards, and crisp spacing
 st.markdown("""
     <style>
-    /* Main body background & base text adjustments */
     .stApp {
         background-color: #0E1117;
     }
     
-    /* Clean custom card container */
     .metric-card {
         background-color: #1A1F2C;
         border: 1px solid #2D3748;
@@ -109,14 +116,12 @@ st.markdown("""
         font-weight: 800;
     }
     
-    /* Input block cleanups */
     div[data-testid="stForm"] {
         border: 1px solid #2D3748 !important;
         background-color: #161B22;
         border-radius: 8px;
     }
     
-    /* Tab active text highlight matching premium dashboards */
     button[data-baseweb="tab"] p {
         font-size: 16px !important;
         font-weight: 600 !important;
@@ -133,11 +138,7 @@ st.markdown("---")
 with st.sidebar:
     st.markdown("### 🎯 Add New Milestone")
     new_goal_name = st.text_input("Milestone Goal Name", placeholder="e.g., Early Retirement")
-    new_goal_date = st.date_input(
-    "Target Date for Goal", 
-    min_value=date.today(),
-    max_value=date(2076, 12, 31)
-)
+    new_goal_date = st.date_input("Target Date for Goal", min_value=date.today(), max_value=date(2076, 12, 31))
     
     if st.button("➕ Instantiate Goal", use_container_width=True):
         if new_goal_name and new_goal_name not in st.session_state.portfolio_data:
@@ -174,10 +175,9 @@ else:
             goal_dict = st.session_state.portfolio_data[goal_name]
             target_date_str = goal_dict["target_date"]
             
-            # --- TOP SECTION: LIVE DATA SUMMARY ROW ---
-            # Pre-calculate data needed for metrics cards up top
-            total_mf_current = sum(fetch_mf_nav(c) * d["units"] for c, d in goal_dict["mutual_funds"].items())
-            total_eq_current = sum(fetch_stock_price(t) * d["qty"] for t, d in goal_dict["equities"].items())
+            # --- TOP SECTION: RE-CALCULATE BALANCES ---
+            total_mf_current = sum(fetch_mf_details(c)[0] * d["units"] for c, d in goal_dict["mutual_funds"].items())
+            total_eq_current = sum(fetch_stock_details(t)[0] * d["qty"] for t, d in goal_dict["equities"].items())
             
             total_debt_current = 0.0
             for d_lbl, d_det in goal_dict["debt"].items():
@@ -191,7 +191,7 @@ else:
             f_db = calculate_future_value(total_debt_current, goal_dict["expected_returns"]["debt"], target_date_str)
             cumulated_future_corpus = f_mf + f_eq + f_db
             
-            # Draw premium card row
+            # Draw premium summary card row
             c1, c2, c3, c4 = st.columns(4)
             with c1:
                 st.markdown(f'<div class="metric-card"><div class="metric-title">Asset Portfolio Today</div><div class="metric-value">₹ {round(current_assets_sum, 2):,}</div></div>', unsafe_allow_html=True)
@@ -236,9 +236,15 @@ else:
             with sub_col_mf2:
                 mf_records = []
                 for code, details in goal_dict["mutual_funds"].items():
-                    nav = fetch_mf_nav(code)
+                    nav, scheme_name = fetch_mf_details(code)
                     curr_val = nav * details["units"]
-                    mf_records.append({"AMFI Code": code, "Units Owned": details["units"], "Live NAV (₹)": nav, "Current Value (₹)": round(curr_val, 2)})
+                    mf_records.append({
+                        "AMFI Code": code, 
+                        "Fund Description": scheme_name, 
+                        "Units Owned": details["units"], 
+                        "Live NAV (₹)": nav, 
+                        "Current Value (₹)": round(curr_val, 2)
+                    })
                 if mf_records:
                     st.dataframe(pd.DataFrame(mf_records), use_container_width=True, hide_index=True)
                 else:
@@ -269,9 +275,16 @@ else:
             with sub_col_eq2:
                 eq_records = []
                 for ticker, details in goal_dict["equities"].items():
-                    live_price = fetch_stock_price(ticker)
+                    live_price, comp_name = fetch_stock_details(ticker)
                     curr_val = live_price * details["qty"]
-                    eq_records.append({"Ticker": ticker, "Shares": details["qty"], "Avg Cost (₹)": details["buy_price"], "Live Spot (₹)": live_price, "Total Value (₹)": round(curr_val, 2)})
+                    eq_records.append({
+                        "Ticker": ticker, 
+                        "Company Name": comp_name, 
+                        "Shares": details["qty"], 
+                        "Avg Cost (₹)": details["buy_price"], 
+                        "Live Spot (₹)": live_price, 
+                        "Total Value (₹)": round(curr_val, 2)
+                    })
                 if eq_records:
                     st.dataframe(pd.DataFrame(eq_records), use_container_width=True, hide_index=True)
                 else:
