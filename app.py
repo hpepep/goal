@@ -122,7 +122,7 @@ st.markdown("""
         font-weight: 600 !important;
     }
     </style>
-""", unsafe_index=True)
+""", unsafe_allow_html=True)
 
 # --- APP UI ---
 st.title("📊 Financial Goal Simulation Dashboard")
