@@ -31,95 +31,95 @@ def trigger_save():
     save_data(st.session_state.portfolio_data)
 
 # --- FINANCIAL ENGINE ---
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=60)
 def fetch_stock_details(ticker):
-    """Fetches stock price and maps numerical BSE codes to actual company names safely."""
-    # 1. Comprehensive dictionary map for common Indian Equities
-    BSE_MAP = {
-        "500325.BO": "Reliance Industries Ltd",
-        "RELIANCE.BO": "Reliance Industries Ltd",
-        "500209.BO": "Infosys Ltd",
-        "INFY.BO": "Infosys Ltd",
-        "532540.BO": "Tata Consultancy Services (TCS)",
-        "TCS.BO": "Tata Consultancy Services (TCS)",
-        "500180.BO": "HDFC Bank Ltd",
-        "HDFCBANK.BO": "HDFC Bank Ltd",
-        "532174.BO": "ICICI Bank Ltd",
-        "ICICIBANK.BO": "ICICI Bank Ltd",
-        "500696.BO": "Hindustan Unilever Ltd (HUL)",
-        "HINDUNILVR.BO": "Hindustan Unilever Ltd (HUL)",
-        "500112.BO": "State Bank of India (SBI)",
-        "SBIN.BO": "State Bank of India (SBI)",
-        "532215.BO": "Axis Bank Ltd",
-        "AXISBANK.BO": "Axis Bank Ltd",
-        "500510.BO": "Larsen & Toubro Ltd (L&T)",
-        "LT.BO": "Larsen & Toubro Ltd (L&T)",
-        "532454.BO": "Bharti Airtel Ltd",
-        "BHARTIALRTT.BO": "Bharti Airtel Ltd",
-        "500820.BO": "Asian Paints Ltd",
-        "ASIANPAINT.BO": "Asian Paints Ltd",
-        "500875.BO": "ITC Ltd",
-        "ITC.BO": "ITC Ltd"
+    """Fetches real-time stock price and dynamic name metadata from yfinance with zero hardcoded prices."""
+    
+    # Cross-reference map to convert fragile BSE numeric codes to resilient NSE tickers
+    EQUITY_IDENTIFIER_MAP = {
+        "500325.BO": {"nse": "RELIANCE.NS", "default_name": "Reliance Industries Ltd"},
+        "RELIANCE.BO": {"nse": "RELIANCE.NS", "default_name": "Reliance Industries Ltd"},
+        "500209.BO": {"nse": "INFY.NS", "default_name": "Infosys Ltd"},
+        "INFY.BO": {"nse": "INFY.NS", "default_name": "Infosys Ltd"},
+        "532540.BO": {"nse": "TCS.NS", "default_name": "Tata Consultancy Services (TCS)"},
+        "TCS.BO": {"nse": "TCS.NS", "default_name": "Tata Consultancy Services (TCS)"},
+        "500180.BO": {"nse": "HDFCBANK.NS", "default_name": "HDFC Bank Ltd"},
+        "HDFCBANK.BO": {"nse": "HDFCBANK.NS", "default_name": "HDFC Bank Ltd"},
+        "532174.BO": {"nse": "ICICIBANK.NS", "default_name": "ICICI Bank Ltd"},
+        "ICICIBANK.BO": {"nse": "ICICIBANK.NS", "default_name": "ICICI Bank Ltd"},
+        "500696.BO": {"nse": "HINDUNILVR.NS", "default_name": "Hindustan Unilever Ltd (HUL)"},
+        "HINDUNILVR.BO": {"nse": "HINDUNILVR.NS", "default_name": "Hindustan Unilever Ltd (HUL)"},
+        "500112.BO": {"nse": "SBIN.NS", "default_name": "State Bank of India (SBI)"},
+        "SBIN.BO": {"nse": "SBIN.NS", "default_name": "State Bank of India (SBI)"},
+        "532215.BO": {"nse": "AXISBANK.NS", "default_name": "Axis Bank Ltd"},
+        "AXISBANK.BO": {"nse": "AXISBANK.NS", "default_name": "Axis Bank Ltd"},
+        "500510.BO": {"nse": "LT.NS", "default_name": "Larsen & Toubro Ltd (L&T)"},
+        "LT.BO": {"nse": "LT.NS", "default_name": "Larsen & Toubro Ltd (L&T)"},
+        "532454.BO": {"nse": "BHARTIALRTT.NS", "default_name": "Bharti Airtel Ltd"},
+        "BHARTIALRTT.BO": {"nse": "BHARTIALRTT.NS", "default_name": "Bharti Airtel Ltd"},
+        "500820.BO": {"nse": "ASIANPAINT.NS", "default_name": "Asian Paints Ltd"},
+        "ASIANPAINT.BO": {"nse": "ASIANPAINT.NS", "default_name": "Asian Paints Ltd"},
+        "500875.BO": {"nse": "ITC.NS", "default_name": "ITC Ltd"},
+        "ITC.BO": {"nse": "ITC.NS", "default_name": "ITC Ltd"}
     }
 
-    # 2. Format the key cleanly first
+    # Format incoming query
     formatted_ticker = ticker.strip().upper()
     if not (formatted_ticker.endswith(".BO") or formatted_ticker.endswith(".NS")):
         formatted_ticker += ".BO"
     
-    # 3. IMMEDIATELY resolve the name from our local dictionary map
-    name = BSE_MAP.get(formatted_ticker, None)
-
-    # 4. Try network lookups to get live price and dynamic names only if map misses
-    price = 0.0
-    try:
-        stock = yf.Ticker(formatted_ticker)
-        
-        # --- ROBUST PRICE FETCHING STRATEGY ---
-        # Strategy A: Try 1-day period historical row
-        hist = stock.history(period="1d")
-        
-        # Strategy B: Fallback to 5-day period if 1d is empty (holidays/weekends)
-        if hist.empty:
-            hist = stock.history(period="5d")
+    # Step 1: Assign default display name if known
+    map_entry = EQUITY_IDENTIFIER_MAP.get(formatted_ticker, None)
+    name = map_entry["default_name"] if map_entry else None
+    
+    # Internal helper function to hit the live API target directly
+    def get_live_quote(symbol):
+        try:
+            stock = yf.Ticker(symbol)
+            # Try 1-day historical period tracking row
+            hist = stock.history(period="1d")
+            if hist.empty:
+                hist = stock.history(period="5d")
+                
+            if not hist.empty:
+                return round(float(hist['Close'].iloc[-1]), 2), stock
             
-        if not hist.empty:
-            price = hist['Close'].iloc[-1]
-        else:
-            # Strategy C: Try fast_info snapshot mapping
+            # Fast raw metadata extraction if tables are blocked
             try:
-                price = stock.fast_info['lastPrice']
+                return round(float(stock.fast_info['lastPrice']), 2), stock
             except:
-                # Strategy D: Deep fallback to fundamental raw attributes (fixes banking ticker bugs)
                 try:
-                    price = stock.basic_info['last_price']
+                    return round(float(stock.info.get('regularMarketPrice', 0.0)), 2), stock
                 except:
-                    try:
-                        price = stock.info.get('regularMarketPrice', stock.info.get('previousClose', 0.0))
-                    except:
-                        pass
+                    return 0.0, stock
+        except:
+            return 0.0, None
+
+    # Step 2: Query Yahoo Finance using the primary entered ticker identifier
+    price, stock_obj = get_live_quote(formatted_ticker)
+    
+    # Step 3: Dual-Routing Bridge. If primary query yields a zero price, use the alternate exchange identifier
+    if price == 0.0 and map_entry:
+        alternate_ticker = map_entry["nse"]
+        price, stock_obj = get_live_quote(alternate_ticker)
         
-        # If it's a stock not in our manual BSE_MAP, try dynamic API mapping
-        if not name:
-            try:
-                name = stock.fast_info['name']
-            except:
-                pass
+    # Step 4: Dynamic name parsing if it's an unmapped custom stock entry
+    if not name and stock_obj:
+        try:
+            name = stock_obj.fast_info['name']
+        except:
+            pass
         if not name or name == formatted_ticker:
             try:
-                name = stock.info.get('longName', stock.info.get('shortName', None))
+                name = stock_obj.info.get('longName', stock_obj.info.get('shortName', None))
             except:
                 pass
-    except Exception as e:
-        # Prevent any network crash from taking down the app UI
-        pass
-
-    # 5. Final fallback name formatting if everything else fails
+                
     if not name:
-        clean_code = formatted_ticker.replace(".BO", "")
-        name = f"Equity Position: {clean_code} (BSE)"
-        
-    return round(price, 2), name
+        clean_code = formatted_ticker.replace(".BO", "").replace(".NS", "")
+        name = f"Equity Instrument: {clean_code}"
+
+    return price, name
 
 @st.cache_data(ttl=3600)
 def fetch_mf_details(scheme_code):
