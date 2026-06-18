@@ -133,7 +133,11 @@ st.markdown("---")
 with st.sidebar:
     st.markdown("### 🎯 Add New Milestone")
     new_goal_name = st.text_input("Milestone Goal Name", placeholder="e.g., Early Retirement")
-    new_goal_date = st.date_input("Target Date for Goal", min_value=date.today())
+    new_goal_date = st.date_input(
+    "Target Date for Goal", 
+    min_value=date.today(),
+    max_value=date(2076, 12, 31)
+)
     
     if st.button("➕ Instantiate Goal", use_container_width=True):
         if new_goal_name and new_goal_name not in st.session_state.portfolio_data:
