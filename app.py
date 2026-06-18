@@ -74,10 +74,26 @@ def fetch_stock_details(ticker):
     price = 0.0
     try:
         stock = yf.Ticker(formatted_ticker)
-        # Try to pull price safely
+        # --- ROBUST PRICE FETCHING STRATEGY ---
+        # Strategy A: Try 1-day period first
         hist = stock.history(period="1d")
+        
+        # Strategy B: Fallback to 5-day period if 1d fails or is empty
+        if hist.empty:
+            hist = stock.history(period="5d")
+            
+        # Extract the very last valid row's closing price
         if not hist.empty:
             price = hist['Close'].iloc[-1]
+        else:
+            # Strategy C: If history is completely blocked, try fast_info or regular info metadata
+            try:
+                price = stock.fast_info['lastPrice']
+            except:
+                try:
+                    price = stock.info.get('regularMarketPrice', 0.0)
+                except:
+                    pass
         
         # If it's a stock not in our manual BSE_MAP, try dynamic API mapping
         if not name:
