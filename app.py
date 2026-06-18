@@ -34,7 +34,6 @@ def trigger_save():
 @st.cache_data(ttl=3600)
 def fetch_stock_details(ticker):
     """Fetches stock price and maps numerical BSE codes to actual company names."""
-    # Comprehensive dictionary map for common Indian Equities
     BSE_MAP = {
         "500325.BO": "Reliance Industries Ltd",
         "RELIANCE.BO": "Reliance Industries Ltd",
@@ -88,7 +87,6 @@ def fetch_stock_details(ticker):
                 
         # Clean string formatting fallback if API fields return blank
         if not name:
-            # If it's a number like 500325.BO, make it readable
             clean_code = formatted_ticker.replace(".BO", "")
             name = f"Equity Position: {clean_code} (BSE)"
             
@@ -124,7 +122,7 @@ def calculate_future_value(current_val, annual_rate, target_date_str):
     except:
         return current_val
 
-# --- CUSTOM THEME STYLING (Retirement Dashboard Style) ---
+# --- CUSTOM THEME STYLING ---
 st.set_page_config(page_title="Goal Portfolio Dashboard", layout="wide")
 
 st.markdown("""
