@@ -33,7 +33,8 @@ def trigger_save():
 # --- FINANCIAL ENGINE ---
 @st.cache_data(ttl=3600)
 def fetch_stock_details(ticker):
-    """Fetches stock price and maps numerical BSE codes to actual company names."""
+    """Fetches stock price and maps numerical BSE codes to actual company names safely."""
+    # 1. Comprehensive dictionary map for common Indian Equities
     BSE_MAP = {
         "500325.BO": "Reliance Industries Ltd",
         "RELIANCE.BO": "Reliance Industries Ltd",
@@ -61,38 +62,44 @@ def fetch_stock_details(ticker):
         "ITC.BO": "ITC Ltd"
     }
 
+    # 2. Format the key cleanly first
+    formatted_ticker = ticker.strip().upper()
+    if not (formatted_ticker.endswith(".BO") or formatted_ticker.endswith(".NS")):
+        formatted_ticker += ".BO"
+    
+    # 3. IMMEDIATELY resolve the name from our local dictionary map
+    name = BSE_MAP.get(formatted_ticker, None)
+
+    # 4. Try network lookups to get live price and dynamic names only if map misses
+    price = 0.0
     try:
-        formatted_ticker = ticker.strip().upper()
-        if not (formatted_ticker.endswith(".BO") or formatted_ticker.endswith(".NS")):
-            formatted_ticker += ".BO"
-        
-        # Pull real-time trading metrics
         stock = yf.Ticker(formatted_ticker)
-        price = stock.history(period="1d")['Close'].iloc[-1]
+        # Try to pull price safely
+        hist = stock.history(period="1d")
+        if not hist.empty:
+            price = hist['Close'].iloc[-1]
         
-        # Match company description
-        name = BSE_MAP.get(formatted_ticker, None)
-        
+        # If it's a stock not in our manual BSE_MAP, try dynamic API mapping
         if not name:
             try:
                 name = stock.fast_info['name']
             except:
                 pass
-                
         if not name or name == formatted_ticker:
             try:
                 name = stock.info.get('longName', stock.info.get('shortName', None))
             except:
                 pass
-                
-        # Clean string formatting fallback if API fields return blank
-        if not name:
-            clean_code = formatted_ticker.replace(".BO", "")
-            name = f"Equity Position: {clean_code} (BSE)"
-            
-        return round(price, 2), name
-    except Exception:
-        return 0.0, ticker
+    except Exception as e:
+        # If the yfinance API fails entirely, we don't crash
+        pass
+
+    # 5. Final fallback name formatting if everything else fails
+    if not name:
+        clean_code = formatted_ticker.replace(".BO", "")
+        name = f"Equity Position: {clean_code} (BSE)"
+        
+    return round(price, 2), name
 
 @st.cache_data(ttl=3600)
 def fetch_mf_details(scheme_code):
