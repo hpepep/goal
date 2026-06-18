@@ -33,7 +33,7 @@ def trigger_save():
 # --- FINANCIAL ENGINE ---
 @st.cache_data(ttl=3600)
 def fetch_stock_details(ticker):
-"""Fetches stock price and company name description with robust fallback logic."""
+    """Fetches stock price and company name description with robust fallback logic."""
     try:
         formatted_ticker = ticker.strip().upper()
         if not (formatted_ticker.endswith(".BO") or formatted_ticker.endswith(".NS")):
