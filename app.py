@@ -291,9 +291,9 @@ else:
             edited_df_mf = st.data_editor(
                 df_mf,
                 column_config={
-                    "AMFI Code": st.column_config.TextColumn("AMFI Code", placeholder="e.g. 119597", required=True),
+                    "AMFI Code": st.column_config.TextColumn("AMFI Code", placeholder="e.g. 119597"),
                     "Fund Description": st.column_config.TextColumn("Fund Description", disabled=True),
-                    "Units Owned": st.column_config.NumberColumn("Units Owned", min_value=0.0, step=0.001, format="%.3f", required=True),
+                    "Units Owned": st.column_config.NumberColumn("Units Owned", min_value=0.0, step=0.001, format="%.3f"),
                     "Live NAV (₹)": st.column_config.NumberColumn("Live NAV (₹)", disabled=True, format="₹ %.2f"),
                     "Current Value (₹)": st.column_config.NumberColumn("Current Value (₹)", disabled=True, format="₹ %.2f")
                 },
@@ -326,9 +326,9 @@ else:
             edited_df_eq = st.data_editor(
                 df_eq,
                 column_config={
-                    "Ticker Symbol": st.column_config.TextColumn("Ticker Symbol", placeholder="e.g. RELIANCE.NS", required=True),
+                    "Ticker Symbol": st.column_config.TextColumn("Ticker Symbol", placeholder="e.g. RELIANCE.NS"),
                     "Company Name": st.column_config.TextColumn("Company Name", disabled=True),
-                    "Shares Volume": st.column_config.NumberColumn("Shares Volume", min_value=0.0, step=1.0, required=True),
+                    "Shares Volume": st.column_config.NumberColumn("Shares Volume", min_value=0.0, step=1.0),
                     "Avg Purchase Price (₹)": st.column_config.NumberColumn("Avg Purchase Price (₹)", min_value=0.0, step=0.01, format="₹ %.2f"),
                     "Live Spot Price (₹)": st.column_config.NumberColumn("Live Spot Price (₹)", disabled=True, format="₹ %.2f"),
                     "Total Asset Value (₹)": st.column_config.NumberColumn("Total Asset Value (₹)", disabled=True, format="₹ %.2f")
@@ -364,9 +364,9 @@ else:
             edited_df_debt = st.data_editor(
                 df_debt,
                 column_config={
-                    "Asset Description": st.column_config.TextColumn("Asset Description", placeholder="e.g. SBI Fixed Deposit", required=True),
-                    "Principal Invested (₹)": st.column_config.NumberColumn("Principal Invested (₹)", min_value=0.0, step=100.0, format="₹ %.2f", required=True),
-                    "Issuance Date (YYYY-MM-DD)": st.column_config.TextColumn("Issuance Date (YYYY-MM-DD)", placeholder="e.2024-01-15", required=True),
+                    "Asset Description": st.column_config.TextColumn("Asset Description", placeholder="e.g. SBI Fixed Deposit"),
+                    "Principal Invested (₹)": st.column_config.NumberColumn("Principal Invested (₹)", min_value=0.0, step=100.0, format="₹ %.2f"),
+                    "Issuance Date (YYYY-MM-DD)": st.column_config.TextColumn("Issuance Date (YYYY-MM-DD)", placeholder="e.g. 2024-01-15"),
                     "Contracted Yield (% p.a.)": st.column_config.NumberColumn("Contracted Yield (% p.a.)", min_value=0.0, max_value=25.0, step=0.05, format="%.2f %%"),
                     "Days Held": st.column_config.NumberColumn("Days Held", disabled=True),
                     "Current Value Today (₹)": st.column_config.NumberColumn("Current Value Today (₹)", disabled=True, format="₹ %.2f")
