@@ -288,14 +288,15 @@ else:
             
             df_mf = pd.DataFrame(mf_list) if mf_list else pd.DataFrame(columns=["AMFI Code", "Fund Description", "Units Owned", "Live NAV (₹)", "Current Value (₹)"])
             
+            # Formatted via dictionary syntax to bypass Python 3.14 argument tracking crash
             edited_df_mf = st.data_editor(
                 df_mf,
                 column_config={
-                    "AMFI Code": st.column_config.TextColumn(label="AMFI Code", placeholder="e.g. 119597"),
-                    "Fund Description": st.column_config.TextColumn(label="Fund Description", disabled=True),
-                    "Units Owned": st.column_config.NumberColumn(label="Units Owned", min_value=0.0, step=0.001, format="%.3f"),
-                    "Live NAV (₹)": st.column_config.NumberColumn(label="Live NAV (₹)", disabled=True, format="₹ %.2f"),
-                    "Current Value (₹)": st.column_config.NumberColumn(label="Current Value (₹)", disabled=True, format="₹ %.2f")
+                    "AMFI Code": {"label": "AMFI Code", "placeholder": "e.g. 119597", "type": "text"},
+                    "Fund Description": {"label": "Fund Description", "disabled": True, "type": "text"},
+                    "Units Owned": {"label": "Units Owned", "min_value": 0.0, "step": 0.001, "format": "%.3f", "type": "number"},
+                    "Live NAV (₹)": {"label": "Live NAV (₹)", "disabled": True, "format": "₹ %.2f", "type": "number"},
+                    "Current Value (₹)": {"label": "Current Value (₹)", "disabled": True, "format": "₹ %.2f", "type": "number"}
                 },
                 num_rows="dynamic",
                 use_container_width=True,
@@ -323,15 +324,16 @@ else:
             
             df_eq = pd.DataFrame(eq_list) if eq_list else pd.DataFrame(columns=["Ticker Symbol", "Company Name", "Shares Volume", "Avg Purchase Price (₹)", "Live Spot Price (₹)", "Total Asset Value (₹)"])
             
+            # Formatted via dictionary syntax to bypass Python 3.14 argument tracking crash
             edited_df_eq = st.data_editor(
                 df_eq,
                 column_config={
-                    "Ticker Symbol": st.column_config.TextColumn(label="Ticker Symbol", placeholder="e.g. RELIANCE.NS"),
-                    "Company Name": st.column_config.TextColumn(label="Company Name", disabled=True),
-                    "Shares Volume": st.column_config.NumberColumn(label="Shares Volume", min_value=0.0, step=1.0),
-                    "Avg Purchase Price (₹)": st.column_config.NumberColumn(label="Avg Purchase Price (₹)", min_value=0.0, step=0.01, format="₹ %.2f"),
-                    "Live Spot Price (₹)": st.column_config.NumberColumn(label="Live Spot Price (₹)", disabled=True, format="₹ %.2f"),
-                    "Total Asset Value (₹)": st.column_config.NumberColumn(label="Total Asset Value (₹)", disabled=True, format="₹ %.2f")
+                    "Ticker Symbol": {"label": "Ticker Symbol", "placeholder": "e.g. RELIANCE.NS", "type": "text"},
+                    "Company Name": {"label": "Company Name", "disabled": True, "type": "text"},
+                    "Shares Volume": {"label": "Shares Volume", "min_value": 0.0, "step": 1.0, "type": "number"},
+                    "Avg Purchase Price (₹)": {"label": "Avg Purchase Price (₹)", "min_value": 0.0, "step": 0.01, "format": "₹ %.2f", "type": "number"},
+                    "Live Spot Price (₹)": {"label": "Live Spot Price (₹)", "disabled": True, "format": "₹ %.2f", "type": "number"},
+                    "Total Asset Value (₹)": {"label": "Total Asset Value (₹)", "disabled": True, "format": "₹ %.2f", "type": "number"}
                 },
                 num_rows="dynamic",
                 use_container_width=True,
@@ -361,15 +363,16 @@ else:
             
             df_debt = pd.DataFrame(debt_list) if debt_list else pd.DataFrame(columns=["Asset Description", "Principal Invested (₹)", "Issuance Date (YYYY-MM-DD)", "Contracted Yield (% p.a.)", "Days Held", "Current Value Today (₹)"])
             
+            # Formatted via dictionary syntax to bypass Python 3.14 argument tracking crash
             edited_df_debt = st.data_editor(
                 df_debt,
                 column_config={
-                    "Asset Description": st.column_config.TextColumn(label="Asset Description", placeholder="e.g. SBI Fixed Deposit"),
-                    "Principal Invested (₹)": st.column_config.NumberColumn(label="Principal Invested (₹)", min_value=0.0, step=100.0, format="₹ %.2f"),
-                    "Issuance Date (YYYY-MM-DD)": st.column_config.TextColumn(label="Issuance Date (YYYY-MM-DD)", placeholder="e.g. 2024-01-15"),
-                    "Contracted Yield (% p.a.)": st.column_config.NumberColumn(label="Contracted Yield (% p.a.)", min_value=0.0, max_value=25.0, step=0.05, format="%.2f %%"),
-                    "Days Held": st.column_config.NumberColumn(label="Days Held", disabled=True),
-                    "Current Value Today (₹)": st.column_config.NumberColumn(label="Current Value Today (₹)", disabled=True, format="₹ %.2f")
+                    "Asset Description": {"label": "Asset Description", "placeholder": "e.g. SBI Fixed Deposit", "type": "text"},
+                    "Principal Invested (₹)": {"label": "Principal Invested (₹)", "min_value": 0.0, "step": 100.0, "format": "₹ %.2f", "type": "number"},
+                    "Issuance Date (YYYY-MM-DD)": {"label": "Issuance Date (YYYY-MM-DD)", "placeholder": "e.g. 2024-01-15", "type": "text"},
+                    "Contracted Yield (% p.a.)": {"label": "Contracted Yield (% p.a.)", "min_value": 0.0, "max_value": 25.0, "step": 0.05, "format": "%.2f %%", "type": "number"},
+                    "Days Held": {"label": "Days Held", "disabled": True, "type": "number"},
+                    "Current Value Today (₹)": {"label": "Current Value Today (₹)", "disabled": True, "format": "₹ %.2f", "type": "number"}
                 },
                 num_rows="dynamic",
                 use_container_width=True,
