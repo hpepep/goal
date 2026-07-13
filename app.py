@@ -291,11 +291,11 @@ else:
             edited_df_mf = st.data_editor(
                 df_mf,
                 column_config={
-                    "AMFI Code": st.column_config.TextColumn("AMFI Code", placeholder="e.g. 119597"),
-                    "Fund Description": st.column_config.TextColumn("Fund Description", disabled=True),
-                    "Units Owned": st.column_config.NumberColumn("Units Owned", min_value=0.0, step=0.001, format="%.3f"),
-                    "Live NAV (₹)": st.column_config.NumberColumn("Live NAV (₹)", disabled=True, format="₹ %.2f"),
-                    "Current Value (₹)": st.column_config.NumberColumn("Current Value (₹)", disabled=True, format="₹ %.2f")
+                    "AMFI Code": st.column_config.TextColumn(label="AMFI Code", placeholder="e.g. 119597"),
+                    "Fund Description": st.column_config.TextColumn(label="Fund Description", disabled=True),
+                    "Units Owned": st.column_config.NumberColumn(label="Units Owned", min_value=0.0, step=0.001, format="%.3f"),
+                    "Live NAV (₹)": st.column_config.NumberColumn(label="Live NAV (₹)", disabled=True, format="₹ %.2f"),
+                    "Current Value (₹)": st.column_config.NumberColumn(label="Current Value (₹)", disabled=True, format="₹ %.2f")
                 },
                 num_rows="dynamic",
                 use_container_width=True,
@@ -326,12 +326,12 @@ else:
             edited_df_eq = st.data_editor(
                 df_eq,
                 column_config={
-                    "Ticker Symbol": st.column_config.TextColumn("Ticker Symbol", placeholder="e.g. RELIANCE.NS"),
-                    "Company Name": st.column_config.TextColumn("Company Name", disabled=True),
-                    "Shares Volume": st.column_config.NumberColumn("Shares Volume", min_value=0.0, step=1.0),
-                    "Avg Purchase Price (₹)": st.column_config.NumberColumn("Avg Purchase Price (₹)", min_value=0.0, step=0.01, format="₹ %.2f"),
-                    "Live Spot Price (₹)": st.column_config.NumberColumn("Live Spot Price (₹)", disabled=True, format="₹ %.2f"),
-                    "Total Asset Value (₹)": st.column_config.NumberColumn("Total Asset Value (₹)", disabled=True, format="₹ %.2f")
+                    "Ticker Symbol": st.column_config.TextColumn(label="Ticker Symbol", placeholder="e.g. RELIANCE.NS"),
+                    "Company Name": st.column_config.TextColumn(label="Company Name", disabled=True),
+                    "Shares Volume": st.column_config.NumberColumn(label="Shares Volume", min_value=0.0, step=1.0),
+                    "Avg Purchase Price (₹)": st.column_config.NumberColumn(label="Avg Purchase Price (₹)", min_value=0.0, step=0.01, format="₹ %.2f"),
+                    "Live Spot Price (₹)": st.column_config.NumberColumn(label="Live Spot Price (₹)", disabled=True, format="₹ %.2f"),
+                    "Total Asset Value (₹)": st.column_config.NumberColumn(label="Total Asset Value (₹)", disabled=True, format="₹ %.2f")
                 },
                 num_rows="dynamic",
                 use_container_width=True,
@@ -364,12 +364,12 @@ else:
             edited_df_debt = st.data_editor(
                 df_debt,
                 column_config={
-                    "Asset Description": st.column_config.TextColumn("Asset Description", placeholder="e.g. SBI Fixed Deposit"),
-                    "Principal Invested (₹)": st.column_config.NumberColumn("Principal Invested (₹)", min_value=0.0, step=100.0, format="₹ %.2f"),
-                    "Issuance Date (YYYY-MM-DD)": st.column_config.TextColumn("Issuance Date (YYYY-MM-DD)", placeholder="e.g. 2024-01-15"),
-                    "Contracted Yield (% p.a.)": st.column_config.NumberColumn("Contracted Yield (% p.a.)", min_value=0.0, max_value=25.0, step=0.05, format="%.2f %%"),
-                    "Days Held": st.column_config.NumberColumn("Days Held", disabled=True),
-                    "Current Value Today (₹)": st.column_config.NumberColumn("Current Value Today (₹)", disabled=True, format="₹ %.2f")
+                    "Asset Description": st.column_config.TextColumn(label="Asset Description", placeholder="e.g. SBI Fixed Deposit"),
+                    "Principal Invested (₹)": st.column_config.NumberColumn(label="Principal Invested (₹)", min_value=0.0, step=100.0, format="₹ %.2f"),
+                    "Issuance Date (YYYY-MM-DD)": st.column_config.TextColumn(label="Issuance Date (YYYY-MM-DD)", placeholder="e.g. 2024-01-15"),
+                    "Contracted Yield (% p.a.)": st.column_config.NumberColumn(label="Contracted Yield (% p.a.)", min_value=0.0, max_value=25.0, step=0.05, format="%.2f %%"),
+                    "Days Held": st.column_config.NumberColumn(label="Days Held", disabled=True),
+                    "Current Value Today (₹)": st.column_config.NumberColumn(label="Current Value Today (₹)", disabled=True, format="₹ %.2f")
                 },
                 num_rows="dynamic",
                 use_container_width=True,
@@ -382,7 +382,6 @@ else:
                 for _, row in edited_df_debt.iterrows():
                     lbl = str(row["Asset Description"]).strip()
                     date_str = str(row["Issuance Date (YYYY-MM-DD)"]).strip()
-                    # Validate date formatting integrity constraints before processing entry updates
                     if lbl and date_str and pd.notna(row["Principal Invested (₹)"]):
                         try:
                             datetime.strptime(date_str, "%Y-%m-%d")
