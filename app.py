@@ -166,10 +166,8 @@ st.markdown("---")
 
 # --- SIDEBAR CONTROLLER ---
 with st.sidebar:
-    # --- DATA TRANSFER HUB ---
     st.markdown("### 💾 Data Backup & Restore")
     
-    # Export Operation
     json_string = json.dumps(st.session_state.portfolio_data, indent=4)
     st.download_button(
         label="📥 Export Portfolio Data (JSON)",
@@ -179,7 +177,6 @@ with st.sidebar:
         use_container_width=True
     )
     
-    # Import Operation
     uploaded_file = st.file_uploader("📤 Import Portfolio Data (JSON)", type=["json"], label_visibility="collapsed")
     if uploaded_file is not None:
         try:
@@ -201,10 +198,11 @@ with st.sidebar:
         if new_goal_name and new_goal_name not in st.session_state.portfolio_data:
             st.session_state.portfolio_data[new_goal_name] = {
                 "target_date": str(new_goal_date),
-                "expected_returns": {"mf": 12.0, "eq": 12.0, "debt": 7.0, "epf": 8.1, "other1": 7.0, "other2": 7.0},
+                "accumulation_returns": {"mf": 12.0, "eq": 12.0, "debt": 7.0, "epf": 8.1, "other1": 7.0, "other2": 7.0},
+                "withdrawal_returns": {"mf": 8.0, "eq": 8.0, "debt": 6.0, "epf": 7.0, "other1": 6.0, "other2": 6.0},
                 "mutual_funds": {}, "equities": {}, "debt": {}, 
                 "epf": {}, "other1": {}, "other2": {},
-                "retirement_config": {"duration_years": 25, "initial_outflow": 1200000.0, "inflation_rate": 6.0, "post_ret_roi": 8.0}
+                "retirement_config": {"duration_years": 25, "initial_outflow": 1200000.0, "inflation_rate": 6.0}
             }
             trigger_save()
             st.success("Goal created!")
@@ -232,52 +230,62 @@ else:
             goal_dict = st.session_state.portfolio_data[goal_name]
             target_date_str = goal_dict["target_date"]
             
-            # Defensive Fallbacks for Backwards Compatibility with Legacy JSON Backups
+            # Backwards Compatibility Upgrades / Defensive Fallbacks
             if "retirement_config" not in goal_dict:
-                goal_dict["retirement_config"] = {"duration_years": 25, "initial_outflow": 1200000.0, "inflation_rate": 6.0, "post_ret_roi": 8.0}
+                goal_dict["retirement_config"] = {"duration_years": 25, "initial_outflow": 1200000.0, "inflation_rate": 6.0}
             goal_dict.setdefault("epf", {})
             goal_dict.setdefault("other1", {})
             goal_dict.setdefault("other2", {})
-            goal_dict["expected_returns"].setdefault("epf", 8.1)
-            goal_dict["expected_returns"].setdefault("other1", 7.0)
-            goal_dict["expected_returns"].setdefault("other2", 7.0)
+            
+            # Legacy expected_returns migration path
+            if "accumulation_returns" not in goal_dict:
+                if "expected_returns" in goal_dict:
+                    goal_dict["accumulation_returns"] = goal_dict["expected_returns"]
+                else:
+                    goal_dict["accumulation_returns"] = {"mf": 12.0, "eq": 12.0, "debt": 7.0, "epf": 8.1, "other1": 7.0, "other2": 7.0}
+            if "withdrawal_returns" not in goal_dict:
+                if "retirement_config" in goal_dict and "post_ret_roi" in goal_dict["retirement_config"]:
+                    p_roi = goal_dict["retirement_config"]["post_ret_roi"]
+                    goal_dict["withdrawal_returns"] = {"mf": p_roi, "eq": p_roi, "debt": p_roi, "epf": p_roi, "other1": p_roi, "other2": p_roi}
+                else:
+                    goal_dict["withdrawal_returns"] = {"mf": 8.0, "eq": 8.0, "debt": 6.0, "epf": 7.0, "other1": 6.0, "other2": 6.0}
+            
+            acc_ret = goal_dict["accumulation_returns"]
+            wth_ret = goal_dict["withdrawal_returns"]
             
             # --- TOP SECTION: RE-CALCULATE BALANCES ---
             total_mf_current = sum(fetch_mf_details(c)[0] * d["units"] for c, d in goal_dict["mutual_funds"].items())
             total_eq_current = sum(fetch_stock_details(t)[0] * d["qty"] for t, d in goal_dict["equities"].items())
             
-            # Fixed Income Calculations
+            # Current values calculated dynamically up to today using the targeted phase accumulation rate
             total_debt_current = 0.0
             for d_lbl, d_det in goal_dict["debt"].items():
                 days_el = calculate_days_between(d_det["start_date"])
-                total_debt_current += d_det["principal"] * ((1 + (d_det["roi"] / 100)) ** (days_el / 365.25))
+                total_debt_current += d_det["principal"] * ((1 + (acc_ret.get("debt", 7.0) / 100)) ** (days_el / 365.25))
 
-            # EPF Calculations
             total_epf_current = 0.0
             for e_lbl, e_det in goal_dict["epf"].items():
                 days_el = calculate_days_between(e_det["start_date"])
-                total_epf_current += e_det["principal"] * ((1 + (e_det["roi"] / 100)) ** (days_el / 365.25))
+                total_epf_current += e_det["principal"] * ((1 + (acc_ret.get("epf", 8.1) / 100)) ** (days_el / 365.25))
 
-            # Other 1 Calculations
             total_o1_current = 0.0
             for o1_lbl, o1_det in goal_dict["other1"].items():
                 days_el = calculate_days_between(o1_det["start_date"])
-                total_o1_current += o1_det["principal"] * ((1 + (o1_det["roi"] / 100)) ** (days_el / 365.25))
+                total_o1_current += o1_det["principal"] * ((1 + (acc_ret.get("other1", 7.0) / 100)) ** (days_el / 365.25))
 
-            # Other 2 Calculations
             total_o2_current = 0.0
             for o2_lbl, o2_det in goal_dict["other2"].items():
                 days_el = calculate_days_between(o2_det["start_date"])
-                total_o2_current += o2_det["principal"] * ((1 + (o2_det["roi"] / 100)) ** (days_el / 365.25))
+                total_o2_current += o2_det["principal"] * ((1 + (acc_ret.get("other2", 7.0) / 100)) ** (days_el / 365.25))
 
             current_assets_sum = total_mf_current + total_eq_current + total_debt_current + total_epf_current + total_o1_current + total_o2_current
             
-            f_mf = calculate_future_value(total_mf_current, goal_dict["expected_returns"]["mf"], target_date_str)
-            f_eq = calculate_future_value(total_eq_current, goal_dict["expected_returns"]["eq"], target_date_str)
-            f_db = calculate_future_value(total_debt_current, goal_dict["expected_returns"]["debt"], target_date_str)
-            f_epf = calculate_future_value(total_epf_current, goal_dict["expected_returns"]["epf"], target_date_str)
-            f_o1 = calculate_future_value(total_o1_current, goal_dict["expected_returns"]["other1"], target_date_str)
-            f_o2 = calculate_future_value(total_o2_current, goal_dict["expected_returns"]["other2"], target_date_str)
+            f_mf = calculate_future_value(total_mf_current, acc_ret.get("mf", 12.0), target_date_str)
+            f_eq = calculate_future_value(total_eq_current, acc_ret.get("eq", 12.0), target_date_str)
+            f_db = calculate_future_value(total_debt_current, acc_ret.get("debt", 7.0), target_date_str)
+            f_epf = calculate_future_value(total_epf_current, acc_ret.get("epf", 8.1), target_date_str)
+            f_o1 = calculate_future_value(total_o1_current, acc_ret.get("other1", 7.0), target_date_str)
+            f_o2 = calculate_future_value(total_o2_current, acc_ret.get("other2", 7.0), target_date_str)
             
             cumulated_future_corpus = f_mf + f_eq + f_db + f_epf + f_o1 + f_o2
             
@@ -295,23 +303,37 @@ else:
 
             # --- TARGET MODEL OPTIMIZATIONS ---
             with st.expander("🛠️ Modify Milestone Timeline & Asset Return Assumptions", expanded=False):
-                r_col1, r_col2, r_col3, r_col4 = st.columns(4)
+                saved_date_obj = datetime.strptime(target_date_str, "%Y-%m-%d").date()
+                updated_date = st.date_input("Adjust Target Date", value=saved_date_obj, min_value=date.today(), max_value=date(2076, 12, 31), key=f"ui_date_{goal_name}")
+                if str(updated_date) != target_date_str:
+                    goal_dict["target_date"] = str(updated_date)
+                    trigger_save()
+                    st.theme()
+                    st.rerun()
+                
+                st.markdown("#### ⏳ Phase 1: Accumulation Returns (Until Goal is Achieved)")
+                r_col1, r_col2, r_col3 = st.columns(3)
                 with r_col1:
-                    saved_date_obj = datetime.strptime(target_date_str, "%Y-%m-%d").date()
-                    updated_date = st.date_input("Adjust Target Date", value=saved_date_obj, min_value=date.today(), max_value=date(2076, 12, 31), key=f"ui_date_{goal_name}")
-                    if str(updated_date) != target_date_str:
-                        goal_dict["target_date"] = str(updated_date)
-                        trigger_save()
-                        st.rerun()
+                    goal_dict["accumulation_returns"]["mf"] = st.number_input("Mutual Funds Growth (%)", min_value=0.0, max_value=40.0, value=float(acc_ret.get("mf", 12.0)), key=f"acc_mf_{goal_name}", on_change=trigger_save)
+                    goal_dict["accumulation_returns"]["epf"] = st.number_input("EPF Growth (%)", min_value=0.0, max_value=40.0, value=float(acc_ret.get("epf", 8.1)), key=f"acc_epf_{goal_name}", on_change=trigger_save)
                 with r_col2:
-                    goal_dict["expected_returns"]["mf"] = st.number_input(f"Mutual Funds ROI (%)", min_value=0.0, max_value=40.0, value=float(goal_dict["expected_returns"].get("mf", 12.0)), key=f"ui_mf_{goal_name}", on_change=trigger_save)
-                    goal_dict["expected_returns"]["epf"] = st.number_input(f"EPF Forecast ROI (%)", min_value=0.0, max_value=40.0, value=float(goal_dict["expected_returns"].get("epf", 8.1)), key=f"ui_epf_roi_{goal_name}", on_change=trigger_save)
+                    goal_dict["accumulation_returns"]["eq"] = st.number_input("Equities Growth (%)", min_value=0.0, max_value=40.0, value=float(acc_ret.get("eq", 12.0)), key=f"acc_eq_{goal_name}", on_change=trigger_save)
+                    goal_dict["accumulation_returns"]["other1"] = st.number_input("Other 1 Growth (%)", min_value=0.0, max_value=40.0, value=float(acc_ret.get("other1", 7.0)), key=f"acc_o1_{goal_name}", on_change=trigger_save)
                 with r_col3:
-                    goal_dict["expected_returns"]["eq"] = st.number_input(f"Equities ROI (%)", min_value=0.0, max_value=40.0, value=float(goal_dict["expected_returns"].get("eq", 12.0)), key=f"ui_eq_{goal_name}", on_change=trigger_save)
-                    goal_dict["expected_returns"]["other1"] = st.number_input(f"Other1 Forecast ROI (%)", min_value=0.0, max_value=40.0, value=float(goal_dict["expected_returns"].get("other1", 7.0)), key=f"ui_o1_roi_{goal_name}", on_change=trigger_save)
-                with r_col4:
-                    goal_dict["expected_returns"]["debt"] = st.number_input(f"Debt/FD ROI (%)", min_value=0.0, max_value=40.0, value=float(goal_dict["expected_returns"].get("debt", 7.0)), key=f"ui_db_{goal_name}", on_change=trigger_save)
-                    goal_dict["expected_returns"]["other2"] = st.number_input(f"Other2 Forecast ROI (%)", min_value=0.0, max_value=40.0, value=float(goal_dict["expected_returns"].get("other2", 7.0)), key=f"ui_o2_roi_{goal_name}", on_change=trigger_save)
+                    goal_dict["accumulation_returns"]["debt"] = st.number_input("Debt/FD Growth (%)", min_value=0.0, max_value=40.0, value=float(acc_ret.get("debt", 7.0)), key=f"acc_db_{goal_name}", on_change=trigger_save)
+                    goal_dict["accumulation_returns"]["other2"] = st.number_input("Other 2 Growth (%)", min_value=0.0, max_value=40.0, value=float(acc_ret.get("other2", 7.0)), key=f"acc_o2_{goal_name}", on_change=trigger_save)
+                
+                st.markdown("#### 📉 Phase 2: Withdrawal Returns (During Period of Withdrawal)")
+                w_col1, w_col2, w_col3 = st.columns(3)
+                with w_col1:
+                    goal_dict["withdrawal_returns"]["mf"] = st.number_input("Mutual Funds Return (%)", min_value=0.0, max_value=40.0, value=float(wth_ret.get("mf", 8.0)), key=f"wth_mf_{goal_name}", on_change=trigger_save)
+                    goal_dict["withdrawal_returns"]["epf"] = st.number_input("EPF Return (%)", min_value=0.0, max_value=40.0, value=float(wth_ret.get("epf", 7.0)), key=f"wth_epf_{goal_name}", on_change=trigger_save)
+                with w_col2:
+                    goal_dict["withdrawal_returns"]["eq"] = st.number_input("Equities Return (%)", min_value=0.0, max_value=40.0, value=float(wth_ret.get("eq", 8.0)), key=f"wth_eq_{goal_name}", on_change=trigger_save)
+                    goal_dict["withdrawal_returns"]["other1"] = st.number_input("Other 1 Return (%)", min_value=0.0, max_value=40.0, value=float(wth_ret.get("other1", 6.0)), key=f"wth_o1_{goal_name}", on_change=trigger_save)
+                with w_col3:
+                    goal_dict["withdrawal_returns"]["debt"] = st.number_input("Debt/FD Return (%)", min_value=0.0, max_value=40.0, value=float(wth_ret.get("debt", 6.0)), key=f"wth_db_{goal_name}", on_change=trigger_save)
+                    goal_dict["withdrawal_returns"]["other2"] = st.number_input("Other 2 Return (%)", min_value=0.0, max_value=40.0, value=float(wth_ret.get("other2", 6.0)), key=f"wth_o2_{goal_name}", on_change=trigger_save)
 
             st.markdown("###")
 
@@ -382,11 +404,10 @@ else:
                     f_db_lbl = st.text_input("Instrument Name", placeholder="e.g. SBI Fixed Deposit")
                     f_db_inv = st.number_input("Principal Invested (₹)", min_value=0.0, step=500.0)
                     f_db_dat = st.date_input("Issuance Date", max_value=date.today())
-                    f_db_roi = st.number_input("Contracted Yield (% p.a.)", min_value=0.0, max_value=25.0, step=0.1)
                     mode_db = st.selectbox("Action", ["Add/Update Asset", "Delete Asset"])
                     if st.form_submit_button("Execute", use_container_width=True):
                         if mode_db == "Add/Update Asset" and f_db_lbl and f_db_inv > 0:
-                            goal_dict["debt"][f_db_lbl] = {"principal": f_db_inv, "start_date": str(f_db_dat), "roi": f_db_roi}
+                            goal_dict["debt"][f_db_lbl] = {"principal": f_db_inv, "start_date": str(f_db_dat)}
                             trigger_save()
                             st.rerun()
                         elif mode_db == "Delete Asset" and f_db_lbl in goal_dict["debt"]:
@@ -397,8 +418,8 @@ else:
                 debt_records = []
                 for label, details in goal_dict["debt"].items():
                     days = calculate_days_between(details["start_date"])
-                    val_today = details["principal"] * ((1 + (details["roi"] / 100)) ** (days / 365.25))
-                    debt_records.append({"Asset Description": label, "Principal": format_indian_currency(details["principal"]), "Yield (%)": details["roi"], "Days Held": days, "Value Today": format_indian_currency(val_today)})
+                    val_today = details["principal"] * ((1 + (acc_ret.get("debt", 7.0) / 100)) ** (days / 365.25))
+                    debt_records.append({"Asset Description": label, "Principal": format_indian_currency(details["principal"]), "Days Held": days, "Value Today": format_indian_currency(val_today)})
                 if debt_records: st.dataframe(pd.DataFrame(debt_records), use_container_width=True, hide_index=True)
                 else: st.caption("No allocations initialized.")
 
@@ -411,11 +432,10 @@ else:
                     f_epf_lbl = st.text_input("Account Identifier/Label", placeholder="e.g. Primary EPF")
                     f_epf_inv = st.number_input("Current Balance / Principal (₹)", min_value=0.0, step=500.0)
                     f_epf_dat = st.date_input("Balance Update/Start Date", max_value=date.today(), key=f"date_epf_{goal_name}")
-                    f_epf_roi = st.number_input("EPF Interest Rate (% p.a.)", min_value=0.0, max_value=25.0, value=8.15, step=0.05)
                     mode_epf = st.selectbox("Action", ["Add/Update Asset", "Delete Asset"])
                     if st.form_submit_button("Execute", use_container_width=True):
                         if mode_epf == "Add/Update Asset" and f_epf_lbl and f_epf_inv > 0:
-                            goal_dict["epf"][f_epf_lbl] = {"principal": f_epf_inv, "start_date": str(f_epf_dat), "roi": f_epf_roi}
+                            goal_dict["epf"][f_epf_lbl] = {"principal": f_epf_inv, "start_date": str(f_epf_dat)}
                             trigger_save()
                             st.rerun()
                         elif mode_epf == "Delete Asset" and f_epf_lbl in goal_dict["epf"]:
@@ -426,8 +446,8 @@ else:
                 epf_records = []
                 for label, details in goal_dict["epf"].items():
                     days = calculate_days_between(details["start_date"])
-                    val_today = details["principal"] * ((1 + (details["roi"] / 100)) ** (days / 365.25))
-                    epf_records.append({"EPF Profile": label, "Principal Base": format_indian_currency(details["principal"]), "Rate (%)": details["roi"], "Days Accruing": days, "Value Today": format_indian_currency(val_today)})
+                    val_today = details["principal"] * ((1 + (acc_ret.get("epf", 8.1) / 100)) ** (days / 365.25))
+                    epf_records.append({"EPF Profile": label, "Principal Base": format_indian_currency(details["principal"]), "Days Accruing": days, "Value Today": format_indian_currency(val_today)})
                 if epf_records: st.dataframe(pd.DataFrame(epf_records), use_container_width=True, hide_index=True)
                 else: st.caption("No EPF accounts configured.")
 
@@ -440,11 +460,10 @@ else:
                     f_o1_lbl = st.text_input("Asset Name", placeholder="e.g. Gold / PPF / Real Estate")
                     f_o1_inv = st.number_input("Value / Principal (₹)", min_value=0.0, step=500.0)
                     f_o1_dat = st.date_input("Evaluation Date", max_value=date.today(), key=f"date_o1_{goal_name}")
-                    f_o1_roi = st.number_input("Expected Rate (% p.a.)", min_value=0.0, max_value=25.0, value=7.0, step=0.1)
                     mode_o1 = st.selectbox("Action", ["Add/Update Asset", "Delete Asset"])
                     if st.form_submit_button("Execute", use_container_width=True):
                         if mode_o1 == "Add/Update Asset" and f_o1_lbl and f_o1_inv > 0:
-                            goal_dict["other1"][f_o1_lbl] = {"principal": f_o1_inv, "start_date": str(f_o1_dat), "roi": f_o1_roi}
+                            goal_dict["other1"][f_o1_lbl] = {"principal": f_o1_inv, "start_date": str(f_o1_dat)}
                             trigger_save()
                             st.rerun()
                         elif mode_o1 == "Delete Asset" and f_o1_lbl in goal_dict["other1"]:
@@ -455,8 +474,8 @@ else:
                 o1_records = []
                 for label, details in goal_dict["other1"].items():
                     days = calculate_days_between(details["start_date"])
-                    val_today = details["principal"] * ((1 + (details["roi"] / 100)) ** (days / 365.25))
-                    o1_records.append({"Asset Label": label, "Principal/Base": format_indian_currency(details["principal"]), "ROI (%)": details["roi"], "Days Held": days, "Value Today": format_indian_currency(val_today)})
+                    val_today = details["principal"] * ((1 + (acc_ret.get("other1", 7.0) / 100)) ** (days / 365.25))
+                    o1_records.append({"Asset Label": label, "Principal/Base": format_indian_currency(details["principal"]), "Days Held": days, "Value Today": format_indian_currency(val_today)})
                 if o1_records: st.dataframe(pd.DataFrame(o1_records), use_container_width=True, hide_index=True)
                 else: st.caption("No custom allocations listed.")
 
@@ -469,11 +488,10 @@ else:
                     f_o2_lbl = st.text_input("Asset Name", placeholder="e.g. Alternative Investments")
                     f_o2_inv = st.number_input("Value / Principal (₹)", min_value=0.0, step=500.0)
                     f_o2_dat = st.date_input("Evaluation Date", max_value=date.today(), key=f"date_o2_{goal_name}")
-                    f_o2_roi = st.number_input("Expected Rate (% p.a.)", min_value=0.0, max_value=25.0, value=7.0, step=0.1)
                     mode_o2 = st.selectbox("Action", ["Add/Update Asset", "Delete Asset"])
                     if st.form_submit_button("Execute", use_container_width=True):
                         if mode_o2 == "Add/Update Asset" and f_o2_lbl and f_o2_inv > 0:
-                            goal_dict["other2"][f_o2_lbl] = {"principal": f_o2_inv, "start_date": str(f_o2_dat), "roi": f_o2_roi}
+                            goal_dict["other2"][f_o2_lbl] = {"principal": f_o2_inv, "start_date": str(f_o2_dat)}
                             trigger_save()
                             st.rerun()
                         elif mode_o2 == "Delete Asset" and f_o2_lbl in goal_dict["other2"]:
@@ -484,14 +502,14 @@ else:
                 o2_records = []
                 for label, details in goal_dict["other2"].items():
                     days = calculate_days_between(details["start_date"])
-                    val_today = details["principal"] * ((1 + (details["roi"] / 100)) ** (days / 365.25))
-                    o2_records.append({"Asset Label": label, "Principal/Base": format_indian_currency(details["principal"]), "ROI (%)": details["roi"], "Days Held": days, "Value Today": format_indian_currency(val_today)})
+                    val_today = details["principal"] * ((1 + (acc_ret.get("other2", 7.0) / 100)) ** (days / 365.25))
+                    o2_records.append({"Asset Label": label, "Principal/Base": format_indian_currency(details["principal"]), "Days Held": days, "Value Today": format_indian_currency(val_today)})
                 if o2_records: st.dataframe(pd.DataFrame(o2_records), use_container_width=True, hide_index=True)
                 else: st.caption("No custom allocations listed.")
 
             # --- CUMULATIVE FORECAST BREAKDOWN ---
             st.markdown("###")
-            st.markdown("### 📊 Compound Projection Profile")
+            st.markdown("### 📊 Compound Projection Profile (Accumulation Phase)")
             proj_data = {
                 "Asset Structure": [
                     "Mutual Funds Group", 
@@ -511,13 +529,13 @@ else:
                     format_indian_currency(total_o2_current),
                     format_indian_currency(current_assets_sum)
                 ],
-                "Modeled Return Factor": [
-                    f"{goal_dict['expected_returns']['mf']}%", 
-                    f"{goal_dict['expected_returns']['eq']}%", 
-                    f"{goal_dict['expected_returns']['debt']}%", 
-                    f"{goal_dict['expected_returns']['epf']}%", 
-                    f"{goal_dict['expected_returns']['other1']}%", 
-                    f"{goal_dict['expected_returns']['other2']}%", 
+                "Accumulation Return Factor": [
+                    f"{acc_ret.get('mf', 12.0)}%", 
+                    f"{acc_ret.get('eq', 12.0)}%", 
+                    f"{acc_ret.get('debt', 7.0)}%",  
+                    f"{acc_ret.get('epf', 8.1)}%", 
+                    f"{acc_ret.get('other1', 7.0)}%", 
+                    f"{acc_ret.get('other2', 7.0)}%", 
                     "—"
                 ],
                 "Terminal Forecast Value": [
@@ -538,68 +556,59 @@ else:
             st.caption("Simulate portfolio drawdowns during the distribution phase, tracking annual cash outflows alongside portfolio longevity.")
 
             ret_conf = goal_dict["retirement_config"]
-            c_p1, c_p2, c_p3, c_p4 = st.columns(4)
+            c_p1, c_p2, c_p3 = st.columns(3)
             with c_p1:
                 ret_years = st.number_input("Retirement Length (Years)", min_value=1, max_value=60, value=int(ret_conf.get("duration_years", 25)), key=f"ret_yr_{goal_name}")
             with c_p2:
                 init_outflow = st.number_input("Year 1 Target Outflow (₹)", min_value=0.0, value=float(ret_conf.get("initial_outflow", 1200000.0)), step=50000.0, key=f"ret_out_{goal_name}")
             with c_p3:
                 inflation = st.number_input("Expected Inflation (% p.a.)", min_value=0.0, max_value=20.0, value=float(ret_conf.get("inflation_rate", 6.0)), step=0.5, key=f"ret_inf_{goal_name}")
-            with c_p4:
-                post_roi = st.number_input("Post-Retirement Portfolio ROI (%)", min_value=0.0, max_value=25.0, value=float(ret_conf.get("post_ret_roi", 8.0)), step=0.5, key=f"ret_roi_{goal_name}")
-
-            if (ret_years != ret_conf["duration_years"] or init_outflow != ret_conf["initial_outflow"] or 
-                inflation != ret_conf["inflation_rate"] or post_roi != ret_conf["post_ret_roi"]):
-                goal_dict["retirement_config"] = {"duration_years": ret_years, "initial_outflow": init_outflow, "inflation_rate": inflation, "post_ret_roi": post_roi}
+            
+            # Save configuration adjustments
+            if (ret_years != ret_conf.get("duration_years") or 
+                init_outflow != ret_conf.get("initial_outflow") or 
+                inflation != ret_conf.get("inflation_rate")):
+                goal_dict["retirement_config"]["duration_years"] = ret_years
+                goal_dict["retirement_config"]["initial_outflow"] = init_outflow
+                goal_dict["retirement_config"]["inflation_rate"] = inflation
                 trigger_save()
 
-            sim_records = []
-            running_portfolio = cumulated_future_corpus
-            target_year_start = datetime.strptime(target_date_str, "%Y-%m-%d").year
-
-            for y in range(1, ret_years + 1):
-                current_calendar_year = target_year_start + (y - 1)
-                yearly_outflow = init_outflow * ((1 + (inflation / 100)) ** (y - 1))
-                
-                opening_balance = running_portfolio
-                if running_portfolio >= yearly_outflow:
-                    portfolio_after_outflow = running_portfolio - yearly_outflow
-                    growth = portfolio_after_outflow * (post_roi / 100)
-                    closing_balance = portfolio_after_outflow + growth
-                    running_portfolio = closing_balance
-                else:
-                    yearly_outflow = max(0.0, running_portfolio)
-                    growth = 0.0
-                    closing_balance = 0.0
-                    running_portfolio = 0.0
-                
-                sim_records.append({
-                    "Year": current_calendar_year,
-                    "Timeline Index": f"Year {y}",
-                    "Opening Portfolio Balance (₹)": round(opening_balance, 2),
-                    "Annual Real Cash Outflow (₹)": round(yearly_outflow, 2),
-                    "Portfolio Growth Yield (₹)": round(growth, 2),
-                    "Closing Portfolio Balance (₹)": round(closing_balance, 2)
-                })
-
-            df_sim = pd.DataFrame(sim_records)
-
-            chart_data = df_sim[["Timeline Index", "Annual Real Cash Outflow (₹)", "Closing Portfolio Balance (₹)"]].copy()
-            chart_data = chart_data.rename(columns={
-                "Annual Real Cash Outflow (₹)": "Annual Outflow",
-                "Closing Portfolio Balance (₹)": "Remaining Portfolio Value"
-            })
+            # Dynamic Simulation using Phase 2 Withdrawal Assumptions
+            # Composite annualized return rate for withdrawal calculated proportionally or averaged
+            w_weights = [f_mf, f_eq, f_db, f_epf, f_o1, f_o2]
+            w_rates = [wth_ret.get("mf", 8.0), wth_ret.get("eq", 8.0), wth_ret.get("debt", 6.0), wth_ret.get("epf", 7.0), wth_ret.get("other1", 6.0), wth_ret.get("other2", 6.0)]
             
-            ch_col1, ch_col2 = st.columns([3, 2])
-            with ch_col1:
-                st.markdown("**Visual Trajectory Overlay (Outflow Bars vs Portfolio Value Line)**")
-                st.line_chart(chart_data.set_index("Timeline Index"), y=["Remaining Portfolio Value", "Annual Outflow"], color=["#4FD1C5", "#E53E3E"])
-            with ch_col2:
-                st.markdown("**Standalone Outflow Volume Trend**")
-                st.bar_chart(chart_data.set_index("Timeline Index"), y="Annual Outflow", color="#E53E3E")
+            if cumulated_future_corpus > 0:
+                blended_withdrawal_roi = sum((w_weights[i] * w_rates[i]) for i in range(6)) / cumulated_future_corpus
+            else:
+                blended_withdrawal_roi = 7.0
+                
+            st.info(f"ℹ️ Blended Portfolio Yield during distribution phase dynamically calculated at: **{blended_withdrawal_roi:.2f}% p.a.** based on asset ratios.")
 
-            st.markdown("#### Detailed Drawdown Ledger")
-            df_display = df_sim.copy()
-            for col in ["Opening Portfolio Balance (₹)", "Annual Real Cash Outflow (₹)", "Portfolio Growth Yield (₹)", "Closing Portfolio Balance (₹)"]:
-                df_display[col] = df_display[col].apply(format_indian_currency)
-            st.dataframe(df_display, use_container_width=True, hide_index=True)
+            sim_corpus = cumulated_future_corpus
+            current_outflow = init_outflow
+            timeline_records = []
+            
+            for y in range(1, ret_years + 1):
+                if sim_corpus <= 0:
+                    timeline_records.append({"Year": f"Year {y}", "Opening Corpus": format_indian_currency(0.0), "Annual Outflow Request": format_indian_currency(current_outflow), "Growth Accrued": format_indian_currency(0.0), "Status": "💥 Corpus Depleted"})
+                else:
+                    opening = sim_corpus
+                    # Asset return application
+                    growth = sim_corpus * (blended_withdrawal_roi / 100)
+                    sim_corpus += growth
+                    
+                    # Outflow subtraction
+                    outflow_applied = min(current_outflow, sim_corpus)
+                    sim_corpus -= outflow_applied
+                    
+                    timeline_records.append({
+                        "Year": f"Year {y}",
+                        "Opening Corpus": format_indian_currency(opening),
+                        "Annual Outflow Request": format_indian_currency(current_outflow),
+                        "Growth Accrued": format_indian_currency(growth),
+                        "Status": "✅ Active" if sim_corpus > 0 else "🚨 Final Year"
+                    })
+                current_outflow *= (1 + (inflation / 100))
+                
+            st.dataframe(pd.DataFrame(timeline_records), use_container_width=True, hide_index=True)
