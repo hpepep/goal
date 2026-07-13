@@ -201,8 +201,9 @@ with st.sidebar:
         if new_goal_name and new_goal_name not in st.session_state.portfolio_data:
             st.session_state.portfolio_data[new_goal_name] = {
                 "target_date": str(new_goal_date),
-                "expected_returns": {"mf": 12.0, "eq": 12.0, "debt": 7.0},
-                "mutual_funds": {}, "equities": {}, "debt": {},
+                "expected_returns": {"mf": 12.0, "eq": 12.0, "debt": 7.0, "epf": 8.1, "other1": 7.0, "other2": 7.0},
+                "mutual_funds": {}, "equities": {}, "debt": {}, 
+                "epf": {}, "other1": {}, "other2": {},
                 "retirement_config": {"duration_years": 25, "initial_outflow": 1200000.0, "inflation_rate": 6.0, "post_ret_roi": 8.0}
             }
             trigger_save()
@@ -231,24 +232,54 @@ else:
             goal_dict = st.session_state.portfolio_data[goal_name]
             target_date_str = goal_dict["target_date"]
             
+            # Defensive Fallbacks for Backwards Compatibility with Legacy JSON Backups
             if "retirement_config" not in goal_dict:
                 goal_dict["retirement_config"] = {"duration_years": 25, "initial_outflow": 1200000.0, "inflation_rate": 6.0, "post_ret_roi": 8.0}
+            goal_dict.setdefault("epf", {})
+            goal_dict.setdefault("other1", {})
+            goal_dict.setdefault("other2", {})
+            goal_dict["expected_returns"].setdefault("epf", 8.1)
+            goal_dict["expected_returns"].setdefault("other1", 7.0)
+            goal_dict["expected_returns"].setdefault("other2", 7.0)
             
             # --- TOP SECTION: RE-CALCULATE BALANCES ---
             total_mf_current = sum(fetch_mf_details(c)[0] * d["units"] for c, d in goal_dict["mutual_funds"].items())
             total_eq_current = sum(fetch_stock_details(t)[0] * d["qty"] for t, d in goal_dict["equities"].items())
             
+            # Fixed Income Calculations
             total_debt_current = 0.0
             for d_lbl, d_det in goal_dict["debt"].items():
                 days_el = calculate_days_between(d_det["start_date"])
                 total_debt_current += d_det["principal"] * ((1 + (d_det["roi"] / 100)) ** (days_el / 365.25))
 
-            current_assets_sum = total_mf_current + total_eq_current + total_debt_current
+            # EPF Calculations
+            total_epf_current = 0.0
+            for e_lbl, e_det in goal_dict["epf"].items():
+                days_el = calculate_days_between(e_det["start_date"])
+                total_epf_current += e_det["principal"] * ((1 + (e_det["roi"] / 100)) ** (days_el / 365.25))
+
+            # Other 1 Calculations
+            total_o1_current = 0.0
+            for o1_lbl, o1_det in goal_dict["other1"].items():
+                days_el = calculate_days_between(o1_det["start_date"])
+                total_o1_current += o1_det["principal"] * ((1 + (o1_det["roi"] / 100)) ** (days_el / 365.25))
+
+            # Other 2 Calculations
+            total_o2_current = 0.0
+            for o2_lbl, o2_det in goal_dict["other2"].items():
+                days_el = calculate_days_between(o2_det["start_date"])
+                total_o2_current += o2_det["principal"] * ((1 + (o2_det["roi"] / 100)) ** (days_el / 365.25))
+
+            current_assets_sum = total_mf_current + total_eq_current + total_debt_current + total_epf_current + total_o1_current + total_o2_current
             
             f_mf = calculate_future_value(total_mf_current, goal_dict["expected_returns"]["mf"], target_date_str)
             f_eq = calculate_future_value(total_eq_current, goal_dict["expected_returns"]["eq"], target_date_str)
             f_db = calculate_future_value(total_debt_current, goal_dict["expected_returns"]["debt"], target_date_str)
-            cumulated_future_corpus = f_mf + f_eq + f_db
+            f_epf = calculate_future_value(total_epf_current, goal_dict["expected_returns"]["epf"], target_date_str)
+            f_o1 = calculate_future_value(total_o1_current, goal_dict["expected_returns"]["other1"], target_date_str)
+            f_o2 = calculate_future_value(total_o2_current, goal_dict["expected_returns"]["other2"], target_date_str)
+            
+            cumulated_future_corpus = f_mf + f_eq + f_db + f_epf + f_o1 + f_o2
             
             # Cards metrics UI
             c1, c2, c3, c4 = st.columns(4)
@@ -274,14 +305,18 @@ else:
                         st.rerun()
                 with r_col2:
                     goal_dict["expected_returns"]["mf"] = st.number_input(f"Mutual Funds ROI (%)", min_value=0.0, max_value=40.0, value=float(goal_dict["expected_returns"].get("mf", 12.0)), key=f"ui_mf_{goal_name}", on_change=trigger_save)
+                    goal_dict["expected_returns"]["epf"] = st.number_input(f"EPF Forecast ROI (%)", min_value=0.0, max_value=40.0, value=float(goal_dict["expected_returns"].get("epf", 8.1)), key=f"ui_epf_roi_{goal_name}", on_change=trigger_save)
                 with r_col3:
                     goal_dict["expected_returns"]["eq"] = st.number_input(f"Equities ROI (%)", min_value=0.0, max_value=40.0, value=float(goal_dict["expected_returns"].get("eq", 12.0)), key=f"ui_eq_{goal_name}", on_change=trigger_save)
+                    goal_dict["expected_returns"]["other1"] = st.number_input(f"Other1 Forecast ROI (%)", min_value=0.0, max_value=40.0, value=float(goal_dict["expected_returns"].get("other1", 7.0)), key=f"ui_o1_roi_{goal_name}", on_change=trigger_save)
                 with r_col4:
                     goal_dict["expected_returns"]["debt"] = st.number_input(f"Debt/FD ROI (%)", min_value=0.0, max_value=40.0, value=float(goal_dict["expected_returns"].get("debt", 7.0)), key=f"ui_db_{goal_name}", on_change=trigger_save)
+                    goal_dict["expected_returns"]["other2"] = st.number_input(f"Other2 Forecast ROI (%)", min_value=0.0, max_value=40.0, value=float(goal_dict["expected_returns"].get("other2", 7.0)), key=f"ui_o2_roi_{goal_name}", on_change=trigger_save)
 
             st.markdown("###")
 
             # --- ASSET SECTION MAPPINGS ---
+            # 1. Mutual Funds
             st.subheader("🧬 1. Mutual Fund Asset Allocations")
             sub_col_mf1, sub_col_mf2 = st.columns([1, 2])
             with sub_col_mf1:
@@ -308,6 +343,7 @@ else:
                 if mf_records: st.dataframe(pd.DataFrame(mf_records), use_container_width=True, hide_index=True)
                 else: st.caption("No allocations initialized.")
 
+            # 2. Equities
             st.subheader("📈 2. Equity Instruments (BSE Native Engine)")
             sub_col_eq1, sub_col_eq2 = st.columns([1, 2])
             with sub_col_eq1:
@@ -337,6 +373,7 @@ else:
                 if eq_records: st.dataframe(pd.DataFrame(eq_records), use_container_width=True, hide_index=True)
                 else: st.caption("No allocations initialized.")
 
+            # 3. Fixed Income
             st.subheader("🏦 3. Fixed Income, FDs & Liquid Capital")
             sub_col_db1, sub_col_db2 = st.columns([1, 2])
             with sub_col_db1:
@@ -365,14 +402,133 @@ else:
                 if debt_records: st.dataframe(pd.DataFrame(debt_records), use_container_width=True, hide_index=True)
                 else: st.caption("No allocations initialized.")
 
+            # 4. EPF Allocation
+            st.subheader("💰 4. Employees' Provident Fund (EPF)")
+            sub_col_epf1, sub_col_epf2 = st.columns([1, 2])
+            with sub_col_epf1:
+                with st.form(key=f"form_epf_{goal_name}"):
+                    st.markdown("**Manage EPF Balances**")
+                    f_epf_lbl = st.text_input("Account Identifier/Label", placeholder="e.g. Primary EPF")
+                    f_epf_inv = st.number_input("Current Balance / Principal (₹)", min_value=0.0, step=500.0)
+                    f_epf_dat = st.date_input("Balance Update/Start Date", max_value=date.today(), key=f"date_epf_{goal_name}")
+                    f_epf_roi = st.number_input("EPF Interest Rate (% p.a.)", min_value=0.0, max_value=25.0, value=8.15, step=0.05)
+                    mode_epf = st.selectbox("Action", ["Add/Update Asset", "Delete Asset"])
+                    if st.form_submit_button("Execute", use_container_width=True):
+                        if mode_epf == "Add/Update Asset" and f_epf_lbl and f_epf_inv > 0:
+                            goal_dict["epf"][f_epf_lbl] = {"principal": f_epf_inv, "start_date": str(f_epf_dat), "roi": f_epf_roi}
+                            trigger_save()
+                            st.rerun()
+                        elif mode_epf == "Delete Asset" and f_epf_lbl in goal_dict["epf"]:
+                            del goal_dict["epf"][f_epf_lbl]
+                            trigger_save()
+                            st.rerun()
+            with sub_col_epf2:
+                epf_records = []
+                for label, details in goal_dict["epf"].items():
+                    days = calculate_days_between(details["start_date"])
+                    val_today = details["principal"] * ((1 + (details["roi"] / 100)) ** (days / 365.25))
+                    epf_records.append({"EPF Profile": label, "Principal Base": format_indian_currency(details["principal"]), "Rate (%)": details["roi"], "Days Accruing": days, "Value Today": format_indian_currency(val_today)})
+                if epf_records: st.dataframe(pd.DataFrame(epf_records), use_container_width=True, hide_index=True)
+                else: st.caption("No EPF accounts configured.")
+
+            # 5. Other1 Allocation
+            st.subheader("🛡️ 5. Custom Asset Class - Other 1")
+            sub_col_o1_1, sub_col_o1_2 = st.columns([1, 2])
+            with sub_col_o1_1:
+                with st.form(key=f"form_o1_{goal_name}"):
+                    st.markdown("**Manage Other1 Assets**")
+                    f_o1_lbl = st.text_input("Asset Name", placeholder="e.g. Gold / PPF / Real Estate")
+                    f_o1_inv = st.number_input("Value / Principal (₹)", min_value=0.0, step=500.0)
+                    f_o1_dat = st.date_input("Evaluation Date", max_value=date.today(), key=f"date_o1_{goal_name}")
+                    f_o1_roi = st.number_input("Expected Rate (% p.a.)", min_value=0.0, max_value=25.0, value=7.0, step=0.1)
+                    mode_o1 = st.selectbox("Action", ["Add/Update Asset", "Delete Asset"])
+                    if st.form_submit_button("Execute", use_container_width=True):
+                        if mode_o1 == "Add/Update Asset" and f_o1_lbl and f_o1_inv > 0:
+                            goal_dict["other1"][f_o1_lbl] = {"principal": f_o1_inv, "start_date": str(f_o1_dat), "roi": f_o1_roi}
+                            trigger_save()
+                            st.rerun()
+                        elif mode_o1 == "Delete Asset" and f_o1_lbl in goal_dict["other1"]:
+                            del goal_dict["other1"][f_o1_lbl]
+                            trigger_save()
+                            st.rerun()
+            with sub_col_o1_2:
+                o1_records = []
+                for label, details in goal_dict["other1"].items():
+                    days = calculate_days_between(details["start_date"])
+                    val_today = details["principal"] * ((1 + (details["roi"] / 100)) ** (days / 365.25))
+                    o1_records.append({"Asset Label": label, "Principal/Base": format_indian_currency(details["principal"]), "ROI (%)": details["roi"], "Days Held": days, "Value Today": format_indian_currency(val_today)})
+                if o1_records: st.dataframe(pd.DataFrame(o1_records), use_container_width=True, hide_index=True)
+                else: st.caption("No custom allocations listed.")
+
+            # 6. Other2 Allocation
+            st.subheader("🧩 6. Custom Asset Class - Other 2")
+            sub_col_o2_1, sub_col_o2_2 = st.columns([1, 2])
+            with sub_col_o2_1:
+                with st.form(key=f"form_o2_{goal_name}"):
+                    st.markdown("**Manage Other2 Assets**")
+                    f_o2_lbl = st.text_input("Asset Name", placeholder="e.g. Alternative Investments")
+                    f_o2_inv = st.number_input("Value / Principal (₹)", min_value=0.0, step=500.0)
+                    f_o2_dat = st.date_input("Evaluation Date", max_value=date.today(), key=f"date_o2_{goal_name}")
+                    f_o2_roi = st.number_input("Expected Rate (% p.a.)", min_value=0.0, max_value=25.0, value=7.0, step=0.1)
+                    mode_o2 = st.selectbox("Action", ["Add/Update Asset", "Delete Asset"])
+                    if st.form_submit_button("Execute", use_container_width=True):
+                        if mode_o2 == "Add/Update Asset" and f_o2_lbl and f_o2_inv > 0:
+                            goal_dict["other2"][f_o2_lbl] = {"principal": f_o2_inv, "start_date": str(f_o2_dat), "roi": f_o2_roi}
+                            trigger_save()
+                            st.rerun()
+                        elif mode_o2 == "Delete Asset" and f_o2_lbl in goal_dict["other2"]:
+                            del goal_dict["other2"][f_o2_lbl]
+                            trigger_save()
+                            st.rerun()
+            with sub_col_o2_2:
+                o2_records = []
+                for label, details in goal_dict["other2"].items():
+                    days = calculate_days_between(details["start_date"])
+                    val_today = details["principal"] * ((1 + (details["roi"] / 100)) ** (days / 365.25))
+                    o2_records.append({"Asset Label": label, "Principal/Base": format_indian_currency(details["principal"]), "ROI (%)": details["roi"], "Days Held": days, "Value Today": format_indian_currency(val_today)})
+                if o2_records: st.dataframe(pd.DataFrame(o2_records), use_container_width=True, hide_index=True)
+                else: st.caption("No custom allocations listed.")
+
             # --- CUMULATIVE FORECAST BREAKDOWN ---
             st.markdown("###")
             st.markdown("### 📊 Compound Projection Profile")
             proj_data = {
-                "Asset Structure": ["Mutual Funds Group", "Equities Portfolio", "Fixed Income / Cash Assets", "AGGREGATED PORTFOLIO"],
-                "Current Baseline Value": [format_indian_currency(total_mf_current), format_indian_currency(total_eq_current), format_indian_currency(total_debt_current), format_indian_currency(current_assets_sum)],
-                "Modeled Return Factor": [f"{goal_dict['expected_returns']['mf']}%", f"{goal_dict['expected_returns']['eq']}%", f"{goal_dict['expected_returns']['debt']}%", "—"],
-                "Terminal Forecast Value": [format_indian_currency(f_mf), format_indian_currency(f_eq), format_indian_currency(f_db), format_indian_currency(cumulated_future_corpus)]
+                "Asset Structure": [
+                    "Mutual Funds Group", 
+                    "Equities Portfolio", 
+                    "Fixed Income / Cash Assets", 
+                    "EPF Balances",
+                    "Other 1 Assets",
+                    "Other 2 Assets",
+                    "AGGREGATED PORTFOLIO"
+                ],
+                "Current Baseline Value": [
+                    format_indian_currency(total_mf_current), 
+                    format_indian_currency(total_eq_current), 
+                    format_indian_currency(total_debt_current), 
+                    format_indian_currency(total_epf_current),
+                    format_indian_currency(total_o1_current),
+                    format_indian_currency(total_o2_current),
+                    format_indian_currency(current_assets_sum)
+                ],
+                "Modeled Return Factor": [
+                    f"{goal_dict['expected_returns']['mf']}%", 
+                    f"{goal_dict['expected_returns']['eq']}%", 
+                    f"{goal_dict['expected_returns']['debt']}%", 
+                    f"{goal_dict['expected_returns']['epf']}%", 
+                    f"{goal_dict['expected_returns']['other1']}%", 
+                    f"{goal_dict['expected_returns']['other2']}%", 
+                    "—"
+                ],
+                "Terminal Forecast Value": [
+                    format_indian_currency(f_mf), 
+                    format_indian_currency(f_eq), 
+                    format_indian_currency(f_db), 
+                    format_indian_currency(f_epf),
+                    format_indian_currency(f_o1),
+                    format_indian_currency(f_o2),
+                    format_indian_currency(cumulated_future_corpus)
+                ]
             }
             st.table(pd.DataFrame(proj_data))
 
