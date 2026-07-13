@@ -35,8 +35,6 @@ def trigger_save():
 @st.cache_data(ttl=60)
 def fetch_stock_details(ticker):
     """Fetches real-time stock price and dynamic name metadata from yfinance with zero hardcoded prices."""
-    
-    # Cross-reference map to convert fragile BSE numeric codes to resilient NSE tickers
     EQUITY_IDENTIFIER_MAP = {
         "500325.BO": {"nse": "RELIANCE.NS", "default_name": "Reliance Industries Ltd"},
         "RELIANCE.BO": {"nse": "RELIANCE.NS", "default_name": "Reliance Industries Ltd"},
@@ -64,67 +62,45 @@ def fetch_stock_details(ticker):
         "ITC.BO": {"nse": "ITC.NS", "default_name": "ITC Ltd"}
     }
 
-    # Format incoming query
     formatted_ticker = ticker.strip().upper()
     if not (formatted_ticker.endswith(".BO") or formatted_ticker.endswith(".NS")):
         formatted_ticker += ".BO"
     
-    # Step 1: Assign default display name if known
     map_entry = EQUITY_IDENTIFIER_MAP.get(formatted_ticker, None)
     name = map_entry["default_name"] if map_entry else None
     
-    # Internal helper function to hit the live API target directly
     def get_live_quote(symbol):
         try:
             stock = yf.Ticker(symbol)
-            # Try 1-day historical period tracking row
             hist = stock.history(period="1d")
             if hist.empty:
                 hist = stock.history(period="5d")
-                
             if not hist.empty:
                 return round(float(hist['Close'].iloc[-1]), 2), stock
-            
-            # Fast raw metadata extraction if tables are blocked
             try:
                 return round(float(stock.fast_info['lastPrice']), 2), stock
             except:
-                try:
-                    return round(float(stock.info.get('regularMarketPrice', 0.0)), 2), stock
-                except:
-                    return 0.0, stock
+                return 0.0, stock
         except:
             return 0.0, None
 
-    # Step 2: Query Yahoo Finance using the primary entered ticker identifier
     price, stock_obj = get_live_quote(formatted_ticker)
     
-    # Step 3: Dual-Routing Bridge. If primary query yields a zero price, use the alternate exchange identifier
     if price == 0.0 and map_entry:
-        alternate_ticker = map_entry["nse"]
-        price, stock_obj = get_live_quote(alternate_ticker)
+        price, stock_obj = get_live_quote(map_entry["nse"])
         
-    # Step 4: Dynamic name parsing if it's an unmapped custom stock entry
     if not name and stock_obj:
         try:
             name = stock_obj.fast_info['name']
         except:
             pass
-        if not name or name == formatted_ticker:
-            try:
-                name = stock_obj.info.get('longName', stock_obj.info.get('shortName', None))
-            except:
-                pass
-                
     if not name:
-        clean_code = formatted_ticker.replace(".BO", "").replace(".NS", "")
-        name = f"Equity Instrument: {clean_code}"
+        name = f"Equity Instrument: {formatted_ticker.replace('.BO','').replace('.NS','')}"
 
     return price, name
 
 @st.cache_data(ttl=3600)
 def fetch_mf_details(scheme_code):
-    """Fetches live NAV and scheme name from AMFI code."""
     try:
         quote = mf_api.get_scheme_quote(scheme_code.strip())
         if quote and 'nav' in quote:
@@ -151,14 +127,11 @@ def calculate_future_value(current_val, annual_rate, target_date_str):
         return current_val
 
 def format_indian_currency(val):
-    """Formats numeric floats into the traditional Indian system (Lakhs, Crores) format securely."""
     try:
         s = f"{round(val, 2):.2f}"
         parts = s.split('.')
         num = parts[0]
         decimal = parts[1]
-        
-        # Regex execution grouping hundreds differently from remaining pairs
         if len(num) > 3:
             last_three = num[-3:]
             remaining = num[:-3]
@@ -174,58 +147,52 @@ st.set_page_config(page_title="Goal Portfolio Dashboard", layout="wide")
 
 st.markdown("""
     <style>
-    .stApp {
-        background-color: #0E1117;
-    }
-    
+    .stApp { background-color: #0E1117; }
     .metric-card {
-        background-color: #1A1F2C;
-        border: 1px solid #2D3748;
-        padding: 20px;
-        border-radius: 10px;
-        text-align: center;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-        margin-bottom: 15px;
+        background-color: #1A1F2C; border: 1px solid #2D3748; padding: 20px;
+        border-radius: 10px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.2); margin-bottom: 15px;
     }
-    .metric-title {
-        color: #A0AEC0;
-        font-size: 13px;
-        text-transform: uppercase;
-        font-weight: 600;
-        letter-spacing: 0.5px;
-        margin-bottom: 8px;
-    }
-    .metric-value {
-        color: #4FD1C5;
-        font-size: 24px;
-        font-weight: 700;
-    }
-    .metric-value-total {
-        color: #38A169;
-        font-size: 28px;
-        font-weight: 800;
-    }
-    
-    div[data-testid="stForm"] {
-        border: 1px solid #2D3748 !important;
-        background-color: #161B22;
-        border-radius: 8px;
-    }
-    
-    button[data-baseweb="tab"] p {
-        font-size: 16px !important;
-        font-weight: 600 !important;
-    }
+    .metric-title { color: #A0AEC0; font-size: 13px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 8px; }
+    .metric-value { color: #4FD1C5; font-size: 24px; font-weight: 700; }
+    .metric-value-total { color: #38A169; font-size: 28px; font-weight: 800; }
+    div[data-testid="stForm"] { border: 1px solid #2D3748 !important; background-color: #161B22; border-radius: 8px; }
+    button[data-baseweb="tab"] p { font-size: 16px !important; font-weight: 600 !important; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- APP UI ---
 st.title("📊 Financial Goal Simulation Dashboard")
 st.caption("A premium tracking matrix mapping current investments to target lifecycle milestones.")
 st.markdown("---")
 
-# --- SIDEBAR GOAL CONTROLLER ---
+# --- SIDEBAR CONTROLLER ---
 with st.sidebar:
+    # --- DATA TRANSFER HUB ---
+    st.markdown("### 💾 Data Backup & Restore")
+    
+    # Export Operation
+    json_string = json.dumps(st.session_state.portfolio_data, indent=4)
+    st.download_button(
+        label="📥 Export Portfolio Data (JSON)",
+        data=json_string,
+        file_name="portfolio_db.json",
+        mime="application/json",
+        use_container_width=True
+    )
+    
+    # Import Operation
+    uploaded_file = st.file_uploader("📤 Import Portfolio Data (JSON)", type=["json"], label_visibility="collapsed")
+    if uploaded_file is not None:
+        try:
+            uploaded_data = json.load(uploaded_file)
+            st.session_state.portfolio_data = uploaded_data
+            save_data(uploaded_data)
+            st.success("Configuration loaded successfully!")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Malformed structure verified: {e}")
+            
+    st.markdown("---")
+
     st.markdown("### 🎯 Add New Milestone")
     new_goal_name = st.text_input("Milestone Goal Name", placeholder="e.g., Early Retirement")
     new_goal_date = st.date_input("Target Date for Goal", min_value=date.today(), max_value=date(2076, 12, 31))
@@ -235,12 +202,11 @@ with st.sidebar:
             st.session_state.portfolio_data[new_goal_name] = {
                 "target_date": str(new_goal_date),
                 "expected_returns": {"mf": 12.0, "eq": 12.0, "debt": 7.0},
-                "mutual_funds": {},
-                "equities": {},
-                "debt": {}
+                "mutual_funds": {}, "equities": {}, "debt": {},
+                "retirement_config": {"duration_years": 25, "initial_outflow": 1200000.0, "inflation_rate": 6.0, "post_ret_roi": 8.0}
             }
             trigger_save()
-            st.success(f"Goal created!")
+            st.success("Goal created!")
             st.rerun()
             
     st.markdown("---")
@@ -265,6 +231,9 @@ else:
             goal_dict = st.session_state.portfolio_data[goal_name]
             target_date_str = goal_dict["target_date"]
             
+            if "retirement_config" not in goal_dict:
+                goal_dict["retirement_config"] = {"duration_years": 25, "initial_outflow": 1200000.0, "inflation_rate": 6.0, "post_ret_roi": 8.0}
+            
             # --- TOP SECTION: RE-CALCULATE BALANCES ---
             total_mf_current = sum(fetch_mf_details(c)[0] * d["units"] for c, d in goal_dict["mutual_funds"].items())
             total_eq_current = sum(fetch_stock_details(t)[0] * d["qty"] for t, d in goal_dict["equities"].items())
@@ -281,30 +250,28 @@ else:
             f_db = calculate_future_value(total_debt_current, goal_dict["expected_returns"]["debt"], target_date_str)
             cumulated_future_corpus = f_mf + f_eq + f_db
             
-            # Draw premium summary card row
+            # Cards metrics UI
             c1, c2, c3, c4 = st.columns(4)
             with c1:
                 st.markdown(f'<div class="metric-card"><div class="metric-title">Asset Portfolio Today</div><div class="metric-value">{format_indian_currency(current_assets_sum)}</div></div>', unsafe_allow_html=True)
             with c2:
                 time_rem = round((datetime.strptime(target_date_str, '%Y-%m-%d').date() - date.today()).days / 365.25, 1)
-                st.markdown(f'<div class="metric-card"><div class="metric-title">Milestone Countdown</div><div class="metric-value">{time_rem} Years</div></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="metric-card"><div class="metric-title">Milestone Countdown</div><div class="metric-value">{max(0.0, time_rem)} Years</div></div>', unsafe_allow_html=True)
             with c3:
                 st.markdown(f'<div class="metric-card"><div class="metric-title">Target Deadline</div><div class="metric-value">{target_date_str}</div></div>', unsafe_allow_html=True)
             with c4:
                 st.markdown(f'<div class="metric-card" style="border-color: #38A169;"><div class="metric-title" style="color: #68D391;">Projected End Corpus</div><div class="metric-value-total">{format_indian_currency(cumulated_future_corpus)}</div></div>', unsafe_allow_html=True)
 
-            # --- TARGET MODEL OPTIMIZATIONS (ROI & TARGET DATE) ---
-            with st.expander("🛠️ Modify Milestone Timeline & Asset Return Assumptions", expanded=True):
+            # --- TARGET MODEL OPTIMIZATIONS ---
+            with st.expander("🛠️ Modify Milestone Timeline & Asset Return Assumptions", expanded=False):
                 r_col1, r_col2, r_col3, r_col4 = st.columns(4)
                 with r_col1:
-                    # Parse saved string date to date object safely for the input element
                     saved_date_obj = datetime.strptime(target_date_str, "%Y-%m-%d").date()
                     updated_date = st.date_input("Adjust Target Date", value=saved_date_obj, min_value=date.today(), max_value=date(2076, 12, 31), key=f"ui_date_{goal_name}")
                     if str(updated_date) != target_date_str:
                         goal_dict["target_date"] = str(updated_date)
                         trigger_save()
                         st.rerun()
-                        
                 with r_col2:
                     goal_dict["expected_returns"]["mf"] = st.number_input(f"Mutual Funds ROI (%)", min_value=0.0, max_value=40.0, value=float(goal_dict["expected_returns"].get("mf", 12.0)), key=f"ui_mf_{goal_name}", on_change=trigger_save)
                 with r_col3:
@@ -314,7 +281,7 @@ else:
 
             st.markdown("###")
 
-            # --- SUB SECTION 1: MUTUAL FUNDS ---
+            # --- ASSET SECTION MAPPINGS ---
             st.subheader("🧬 1. Mutual Fund Asset Allocations")
             sub_col_mf1, sub_col_mf2 = st.columns([1, 2])
             with sub_col_mf1:
@@ -337,19 +304,10 @@ else:
                 for code, details in goal_dict["mutual_funds"].items():
                     nav, scheme_name = fetch_mf_details(code)
                     curr_val = nav * details["units"]
-                    mf_records.append({
-                        "AMFI Code": code, 
-                        "Fund Description": scheme_name, 
-                        "Units Owned": details["units"], 
-                        "Live NAV": format_indian_currency(nav), 
-                        "Current Value": format_indian_currency(curr_val)
-                    })
-                if mf_records:
-                    st.dataframe(pd.DataFrame(mf_records), use_container_width=True, hide_index=True)
-                else:
-                    st.caption("No allocations initialized.")
+                    mf_records.append({"AMFI Code": code, "Fund Description": scheme_name, "Units Owned": details["units"], "Live NAV": format_indian_currency(nav), "Current Value": format_indian_currency(curr_val)})
+                if mf_records: st.dataframe(pd.DataFrame(mf_records), use_container_width=True, hide_index=True)
+                else: st.caption("No allocations initialized.")
 
-            # --- SUB SECTION 2: EQUITIES ---
             st.subheader("📈 2. Equity Instruments (BSE Native Engine)")
             sub_col_eq1, sub_col_eq2 = st.columns([1, 2])
             with sub_col_eq1:
@@ -361,8 +319,7 @@ else:
                     mode_eq = st.selectbox("Action", ["Add/Update Asset", "Delete Asset"])
                     if st.form_submit_button("Execute", use_container_width=True):
                         t_key = f_eq_tick.strip().upper()
-                        if not (t_key.endswith(".BO") or t_key.endswith(".NS")):
-                            t_key += ".BO"
+                        if not (t_key.endswith(".BO") or t_key.endswith(".NS")): t_key += ".BO"
                         if mode_eq == "Add/Update Asset" and f_eq_tick and f_eq_qty > 0:
                             goal_dict["equities"][t_key] = {"qty": f_eq_qty, "buy_price": f_eq_prc}
                             trigger_save()
@@ -376,20 +333,10 @@ else:
                 for ticker, details in goal_dict["equities"].items():
                     live_price, comp_name = fetch_stock_details(ticker)
                     curr_val = live_price * details["qty"]
-                    eq_records.append({
-                        "Ticker": ticker, 
-                        "Company Name": comp_name, 
-                        "Shares": details["qty"], 
-                        "Avg Cost": format_indian_currency(details["buy_price"]), 
-                        "Live Spot": format_indian_currency(live_price), 
-                        "Total Value": format_indian_currency(curr_val)
-                    })
-                if eq_records:
-                    st.dataframe(pd.DataFrame(eq_records), use_container_width=True, hide_index=True)
-                else:
-                    st.caption("No allocations initialized.")
+                    eq_records.append({"Ticker": ticker, "Company Name": comp_name, "Shares": details["qty"], "Avg Cost": format_indian_currency(details["buy_price"]), "Live Spot": format_indian_currency(live_price), "Total Value": format_indian_currency(curr_val)})
+                if eq_records: st.dataframe(pd.DataFrame(eq_records), use_container_width=True, hide_index=True)
+                else: st.caption("No allocations initialized.")
 
-            # --- SUB SECTION 3: FIXED INCOME ---
             st.subheader("🏦 3. Fixed Income, FDs & Liquid Capital")
             sub_col_db1, sub_col_db2 = st.columns([1, 2])
             with sub_col_db1:
@@ -414,22 +361,13 @@ else:
                 for label, details in goal_dict["debt"].items():
                     days = calculate_days_between(details["start_date"])
                     val_today = details["principal"] * ((1 + (details["roi"] / 100)) ** (days / 365.25))
-                    debt_records.append({
-                        "Asset Description": label, 
-                        "Principal": format_indian_currency(details["principal"]), 
-                        "Yield (%)": details["roi"], 
-                        "Days Held": days, 
-                        "Value Today": format_indian_currency(val_today)
-                    })
-                if debt_records:
-                    st.dataframe(pd.DataFrame(debt_records), use_container_width=True, hide_index=True)
-                else:
-                    st.caption("No allocations initialized.")
+                    debt_records.append({"Asset Description": label, "Principal": format_indian_currency(details["principal"]), "Yield (%)": details["roi"], "Days Held": days, "Value Today": format_indian_currency(val_today)})
+                if debt_records: st.dataframe(pd.DataFrame(debt_records), use_container_width=True, hide_index=True)
+                else: st.caption("No allocations initialized.")
 
-            # --- CUMULATIVE FORECAST BREAKDOWN SECTION ---
+            # --- CUMULATIVE FORECAST BREAKDOWN ---
             st.markdown("###")
             st.markdown("### 📊 Compound Projection Profile")
-            
             proj_data = {
                 "Asset Structure": ["Mutual Funds Group", "Equities Portfolio", "Fixed Income / Cash Assets", "AGGREGATED PORTFOLIO"],
                 "Current Baseline Value": [format_indian_currency(total_mf_current), format_indian_currency(total_eq_current), format_indian_currency(total_debt_current), format_indian_currency(current_assets_sum)],
@@ -437,3 +375,75 @@ else:
                 "Terminal Forecast Value": [format_indian_currency(f_mf), format_indian_currency(f_eq), format_indian_currency(f_db), format_indian_currency(cumulated_future_corpus)]
             }
             st.table(pd.DataFrame(proj_data))
+
+            # --- ANNUALIZED DYNAMIC REAL CASH OUTFLOW TIMELINE ---
+            st.markdown("---")
+            st.markdown("### 📉 Annualized Dynamic Real Cash Outflow Timeline")
+            st.caption("Simulate portfolio drawdowns during the distribution phase, tracking annual cash outflows alongside portfolio longevity.")
+
+            ret_conf = goal_dict["retirement_config"]
+            c_p1, c_p2, c_p3, c_p4 = st.columns(4)
+            with c_p1:
+                ret_years = st.number_input("Retirement Length (Years)", min_value=1, max_value=60, value=int(ret_conf.get("duration_years", 25)), key=f"ret_yr_{goal_name}")
+            with c_p2:
+                init_outflow = st.number_input("Year 1 Target Outflow (₹)", min_value=0.0, value=float(ret_conf.get("initial_outflow", 1200000.0)), step=50000.0, key=f"ret_out_{goal_name}")
+            with c_p3:
+                inflation = st.number_input("Expected Inflation (% p.a.)", min_value=0.0, max_value=20.0, value=float(ret_conf.get("inflation_rate", 6.0)), step=0.5, key=f"ret_inf_{goal_name}")
+            with c_p4:
+                post_roi = st.number_input("Post-Retirement Portfolio ROI (%)", min_value=0.0, max_value=25.0, value=float(ret_conf.get("post_ret_roi", 8.0)), step=0.5, key=f"ret_roi_{goal_name}")
+
+            if (ret_years != ret_conf["duration_years"] or init_outflow != ret_conf["initial_outflow"] or 
+                inflation != ret_conf["inflation_rate"] or post_roi != ret_conf["post_ret_roi"]):
+                goal_dict["retirement_config"] = {"duration_years": ret_years, "initial_outflow": init_outflow, "inflation_rate": inflation, "post_ret_roi": post_roi}
+                trigger_save()
+
+            sim_records = []
+            running_portfolio = cumulated_future_corpus
+            target_year_start = datetime.strptime(target_date_str, "%Y-%m-%d").year
+
+            for y in range(1, ret_years + 1):
+                current_calendar_year = target_year_start + (y - 1)
+                yearly_outflow = init_outflow * ((1 + (inflation / 100)) ** (y - 1))
+                
+                opening_balance = running_portfolio
+                if running_portfolio >= yearly_outflow:
+                    portfolio_after_outflow = running_portfolio - yearly_outflow
+                    growth = portfolio_after_outflow * (post_roi / 100)
+                    closing_balance = portfolio_after_outflow + growth
+                    running_portfolio = closing_balance
+                else:
+                    yearly_outflow = max(0.0, running_portfolio)
+                    growth = 0.0
+                    closing_balance = 0.0
+                    running_portfolio = 0.0
+                
+                sim_records.append({
+                    "Year": current_calendar_year,
+                    "Timeline Index": f"Year {y}",
+                    "Opening Portfolio Balance (₹)": round(opening_balance, 2),
+                    "Annual Real Cash Outflow (₹)": round(yearly_outflow, 2),
+                    "Portfolio Growth Yield (₹)": round(growth, 2),
+                    "Closing Portfolio Balance (₹)": round(closing_balance, 2)
+                })
+
+            df_sim = pd.DataFrame(sim_records)
+
+            chart_data = df_sim[["Timeline Index", "Annual Real Cash Outflow (₹)", "Closing Portfolio Balance (₹)"]].copy()
+            chart_data = chart_data.rename(columns={
+                "Annual Real Cash Outflow (₹)": "Annual Outflow",
+                "Closing Portfolio Balance (₹)": "Remaining Portfolio Value"
+            })
+            
+            ch_col1, ch_col2 = st.columns([3, 2])
+            with ch_col1:
+                st.markdown("**Visual Trajectory Overlay (Outflow Bars vs Portfolio Value Line)**")
+                st.line_chart(chart_data.set_index("Timeline Index"), y=["Remaining Portfolio Value", "Annual Outflow"], color=["#4FD1C5", "#E53E3E"])
+            with ch_col2:
+                st.markdown("**Standalone Outflow Volume Trend**")
+                st.bar_chart(chart_data.set_index("Timeline Index"), y="Annual Outflow", color="#E53E3E")
+
+            st.markdown("#### Detailed Drawdown Ledger")
+            df_display = df_sim.copy()
+            for col in ["Opening Portfolio Balance (₹)", "Annual Real Cash Outflow (₹)", "Portfolio Growth Yield (₹)", "Closing Portfolio Balance (₹)"]:
+                df_display[col] = df_display[col].apply(format_indian_currency)
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
