@@ -155,7 +155,6 @@ st.markdown("""
     .metric-title { color: #A0AEC0; font-size: 13px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 8px; }
     .metric-value { color: #4FD1C5; font-size: 24px; font-weight: 700; }
     .metric-value-total { color: #38A169; font-size: 28px; font-weight: 800; }
-    div[data-testid="stForm"] { border: 1px solid #2D3748 !important; background-color: #161B22; border-radius: 8px; }
     button[data-baseweb="tab"] p { font-size: 16px !important; font-weight: 600 !important; }
     </style>
 """, unsafe_allow_html=True)
@@ -166,10 +165,8 @@ st.markdown("---")
 
 # --- SIDEBAR CONTROLLER ---
 with st.sidebar:
-    # --- DATA TRANSFER HUB ---
     st.markdown("### 💾 Data Backup & Restore")
     
-    # Export Operation
     json_string = json.dumps(st.session_state.portfolio_data, indent=4)
     st.download_button(
         label="📥 Export Portfolio Data (JSON)",
@@ -179,7 +176,6 @@ with st.sidebar:
         use_container_width=True
     )
     
-    # Import Operation
     uploaded_file = st.file_uploader("📤 Import Portfolio Data (JSON)", type=["json"], label_visibility="collapsed")
     if uploaded_file is not None:
         try:
@@ -234,7 +230,7 @@ else:
             if "retirement_config" not in goal_dict:
                 goal_dict["retirement_config"] = {"duration_years": 25, "initial_outflow": 1200000.0, "inflation_rate": 6.0, "post_ret_roi": 8.0}
             
-            # --- TOP SECTION: RE-CALCULATE BALANCES ---
+            # --- TOP SECTION: COMPUTE CURRENT ASSETS ---
             total_mf_current = sum(fetch_mf_details(c)[0] * d["units"] for c, d in goal_dict["mutual_funds"].items())
             total_eq_current = sum(fetch_stock_details(t)[0] * d["qty"] for t, d in goal_dict["equities"].items())
             
@@ -250,7 +246,7 @@ else:
             f_db = calculate_future_value(total_debt_current, goal_dict["expected_returns"]["debt"], target_date_str)
             cumulated_future_corpus = f_mf + f_eq + f_db
             
-            # Cards metrics UI
+            # Summary Banner Metrics
             c1, c2, c3, c4 = st.columns(4)
             with c1:
                 st.markdown(f'<div class="metric-card"><div class="metric-title">Asset Portfolio Today</div><div class="metric-value">{format_indian_currency(current_assets_sum)}</div></div>', unsafe_allow_html=True)
@@ -262,7 +258,7 @@ else:
             with c4:
                 st.markdown(f'<div class="metric-card" style="border-color: #38A169;"><div class="metric-title" style="color: #68D391;">Projected End Corpus</div><div class="metric-value-total">{format_indian_currency(cumulated_future_corpus)}</div></div>', unsafe_allow_html=True)
 
-            # --- TARGET MODEL OPTIMIZATIONS ---
+            # --- TARGET MODEL CONFIGURATION ---
             with st.expander("🛠️ Modify Milestone Timeline & Asset Return Assumptions", expanded=False):
                 r_col1, r_col2, r_col3, r_col4 = st.columns(4)
                 with r_col1:
@@ -281,91 +277,123 @@ else:
 
             st.markdown("###")
 
-            # --- ASSET SECTION MAPPINGS ---
+            # --- SUB-SECTION 1: MUTUAL FUNDS (INLINE DATA EDITOR) ---
             st.subheader("🧬 1. Mutual Fund Asset Allocations")
-            sub_col_mf1, sub_col_mf2 = st.columns([1, 2])
-            with sub_col_mf1:
-                with st.form(key=f"form_mf_{goal_name}"):
-                    st.markdown("**Manage Core Assets**")
-                    f_mf_code = st.text_input("AMFI Code", placeholder="e.g. 119597")
-                    f_mf_units = st.number_input("Units Held", min_value=0.0, step=0.001)
-                    mode_mf = st.selectbox("Action", ["Add/Update Asset", "Delete Asset"])
-                    if st.form_submit_button("Execute", use_container_width=True):
-                        if mode_mf == "Add/Update Asset" and f_mf_code and f_mf_units > 0:
-                            goal_dict["mutual_funds"][f_mf_code] = {"units": f_mf_units}
-                            trigger_save()
-                            st.rerun()
-                        elif mode_mf == "Delete Asset" and f_mf_code in goal_dict["mutual_funds"]:
-                            del goal_dict["mutual_funds"][f_mf_code]
-                            trigger_save()
-                            st.rerun()
-            with sub_col_mf2:
-                mf_records = []
-                for code, details in goal_dict["mutual_funds"].items():
-                    nav, scheme_name = fetch_mf_details(code)
-                    curr_val = nav * details["units"]
-                    mf_records.append({"AMFI Code": code, "Fund Description": scheme_name, "Units Owned": details["units"], "Live NAV": format_indian_currency(nav), "Current Value": format_indian_currency(curr_val)})
-                if mf_records: st.dataframe(pd.DataFrame(mf_records), use_container_width=True, hide_index=True)
-                else: st.caption("No allocations initialized.")
+            st.caption("Double-click any field to modify allocations. Select the checkbox row-marker and hit the 'Delete' key to drop rows. Add new allocations in the clean row at the bottom.")
+            
+            mf_list = []
+            for code, details in goal_dict["mutual_funds"].items():
+                nav, name_mf = fetch_mf_details(code)
+                mf_list.append({"AMFI Code": code, "Fund Description": name_mf, "Units Owned": float(details["units"]), "Live NAV (₹)": nav, "Current Value (₹)": round(nav * details["units"], 2)})
+            
+            df_mf = pd.DataFrame(mf_list) if mf_list else pd.DataFrame(columns=["AMFI Code", "Fund Description", "Units Owned", "Live NAV (₹)", "Current Value (₹)"])
+            
+            edited_df_mf = st.data_editor(
+                df_mf,
+                column_config={
+                    "AMFI Code": st.column_config.TextColumn("AMFI Code", placeholder="e.g. 119597", required=True),
+                    "Fund Description": st.column_config.TextColumn("Fund Description", disabled=True),
+                    "Units Owned": st.column_config.NumberColumn("Units Owned", min_value=0.0, step=0.001, format="%.3f", required=True),
+                    "Live NAV (₹)": st.column_config.NumberColumn("Live NAV (₹)", disabled=True, format="₹ %.2f"),
+                    "Current Value (₹)": st.column_config.NumberColumn("Current Value (₹)", disabled=True, format="₹ %.2f")
+                },
+                num_rows="dynamic",
+                use_container_width=True,
+                hide_index=True,
+                key=f"editor_mf_{goal_name}"
+            )
+            
+            # Re-sync modified editor metrics to back-end architecture state
+            if not edited_df_mf.equals(df_mf):
+                new_mf_dict = {}
+                for _, row in edited_df_mf.iterrows():
+                    code = str(row["AMFI Code"]).strip()
+                    if code and pd.notna(row["Units Owned"]):
+                        new_mf_dict[code] = {"units": float(row["Units Owned"])}
+                goal_dict["mutual_funds"] = new_mf_dict
+                trigger_save()
+                st.rerun()
 
-            st.subheader("📈 2. Equity Instruments (BSE Native Engine)")
-            sub_col_eq1, sub_col_eq2 = st.columns([1, 2])
-            with sub_col_eq1:
-                with st.form(key=f"form_eq_{goal_name}"):
-                    st.markdown("**Manage Equity Positions**")
-                    f_eq_tick = st.text_input("BSE Code / Ticker", placeholder="e.g. 500325")
-                    f_eq_qty = st.number_input("Shares Volume", min_value=0.0, step=1.0)
-                    f_eq_prc = st.number_input("Avg Price (₹)", min_value=0.0, step=0.1)
-                    mode_eq = st.selectbox("Action", ["Add/Update Asset", "Delete Asset"])
-                    if st.form_submit_button("Execute", use_container_width=True):
-                        t_key = f_eq_tick.strip().upper()
-                        if not (t_key.endswith(".BO") or t_key.endswith(".NS")): t_key += ".BO"
-                        if mode_eq == "Add/Update Asset" and f_eq_tick and f_eq_qty > 0:
-                            goal_dict["equities"][t_key] = {"qty": f_eq_qty, "buy_price": f_eq_prc}
-                            trigger_save()
-                            st.rerun()
-                        elif mode_eq == "Delete Asset" and t_key in goal_dict["equities"]:
-                            del goal_dict["equities"][t_key]
-                            trigger_save()
-                            st.rerun()
-            with sub_col_eq2:
-                eq_records = []
-                for ticker, details in goal_dict["equities"].items():
-                    live_price, comp_name = fetch_stock_details(ticker)
-                    curr_val = live_price * details["qty"]
-                    eq_records.append({"Ticker": ticker, "Company Name": comp_name, "Shares": details["qty"], "Avg Cost": format_indian_currency(details["buy_price"]), "Live Spot": format_indian_currency(live_price), "Total Value": format_indian_currency(curr_val)})
-                if eq_records: st.dataframe(pd.DataFrame(eq_records), use_container_width=True, hide_index=True)
-                else: st.caption("No allocations initialized.")
+            # --- SUB-SECTION 2: EQUITIES (INLINE DATA EDITOR) ---
+            st.subheader("📈 2. Equity Instruments (BSE/NSE Platform)")
+            eq_list = []
+            for ticker, details in goal_dict["equities"].items():
+                live_price, comp_name = fetch_stock_details(ticker)
+                eq_list.append({"Ticker Symbol": ticker, "Company Name": comp_name, "Shares Volume": float(details["qty"]), "Avg Purchase Price (₹)": float(details["buy_price"]), "Live Spot Price (₹)": live_price, "Total Asset Value (₹)": round(live_price * details["qty"], 2)})
+            
+            df_eq = pd.DataFrame(eq_list) if eq_list else pd.DataFrame(columns=["Ticker Symbol", "Company Name", "Shares Volume", "Avg Purchase Price (₹)", "Live Spot Price (₹)", "Total Asset Value (₹)"])
+            
+            edited_df_eq = st.data_editor(
+                df_eq,
+                column_config={
+                    "Ticker Symbol": st.column_config.TextColumn("Ticker Symbol", placeholder="e.g. RELIANCE.NS", required=True),
+                    "Company Name": st.column_config.TextColumn("Company Name", disabled=True),
+                    "Shares Volume": st.column_config.NumberColumn("Shares Volume", min_value=0.0, step=1.0, required=True),
+                    "Avg Purchase Price (₹)": st.column_config.NumberColumn("Avg Purchase Price (₹)", min_value=0.0, step=0.01, format="₹ %.2f"),
+                    "Live Spot Price (₹)": st.column_config.NumberColumn("Live Spot Price (₹)", disabled=True, format="₹ %.2f"),
+                    "Total Asset Value (₹)": st.column_config.NumberColumn("Total Asset Value (₹)", disabled=True, format="₹ %.2f")
+                },
+                num_rows="dynamic",
+                use_container_width=True,
+                hide_index=True,
+                key=f"editor_eq_{goal_name}"
+            )
+            
+            if not edited_df_eq.equals(df_eq):
+                new_eq_dict = {}
+                for _, row in edited_df_eq.iterrows():
+                    ticker = str(row["Ticker Symbol"]).strip().upper()
+                    if ticker and pd.notna(row["Shares Volume"]):
+                        if not (ticker.endswith(".BO") or ticker.endswith(".NS")):
+                            ticker += ".BO"
+                        new_eq_dict[ticker] = {"qty": float(row["Shares Volume"]), "buy_price": float(row["Avg Purchase Price (₹)"]) if pd.notna(row["Avg Purchase Price (₹)"]) else 0.0}
+                goal_dict["equities"] = new_eq_dict
+                trigger_save()
+                st.rerun()
 
+            # --- SUB-SECTION 3: DEBT / FIXED INCOME (INLINE DATA EDITOR) ---
             st.subheader("🏦 3. Fixed Income, FDs & Liquid Capital")
-            sub_col_db1, sub_col_db2 = st.columns([1, 2])
-            with sub_col_db1:
-                with st.form(key=f"form_db_{goal_name}"):
-                    st.markdown("**Manage Debt Instruments**")
-                    f_db_lbl = st.text_input("Instrument Name", placeholder="e.g. SBI Fixed Deposit")
-                    f_db_inv = st.number_input("Principal Invested (₹)", min_value=0.0, step=500.0)
-                    f_db_dat = st.date_input("Issuance Date", max_value=date.today())
-                    f_db_roi = st.number_input("Contracted Yield (% p.a.)", min_value=0.0, max_value=25.0, step=0.1)
-                    mode_db = st.selectbox("Action", ["Add/Update Asset", "Delete Asset"])
-                    if st.form_submit_button("Execute", use_container_width=True):
-                        if mode_db == "Add/Update Asset" and f_db_lbl and f_db_inv > 0:
-                            goal_dict["debt"][f_db_lbl] = {"principal": f_db_inv, "start_date": str(f_db_dat), "roi": f_db_roi}
-                            trigger_save()
-                            st.rerun()
-                        elif mode_db == "Delete Asset" and f_db_lbl in goal_dict["debt"]:
-                            del goal_dict["debt"][f_db_lbl]
-                            trigger_save()
-                            st.rerun()
-            with sub_col_db2:
-                debt_records = []
-                for label, details in goal_dict["debt"].items():
-                    days = calculate_days_between(details["start_date"])
-                    val_today = details["principal"] * ((1 + (details["roi"] / 100)) ** (days / 365.25))
-                    debt_records.append({"Asset Description": label, "Principal": format_indian_currency(details["principal"]), "Yield (%)": details["roi"], "Days Held": days, "Value Today": format_indian_currency(val_today)})
-                if debt_records: st.dataframe(pd.DataFrame(debt_records), use_container_width=True, hide_index=True)
-                else: st.caption("No allocations initialized.")
+            debt_list = []
+            for label, details in goal_dict["debt"].items():
+                days = calculate_days_between(details["start_date"])
+                val_today = details["principal"] * ((1 + (details["roi"] / 100)) ** (days / 365.25))
+                debt_list.append({"Asset Description": label, "Principal Invested (₹)": float(details["principal"]), "Issuance Date (YYYY-MM-DD)": details["start_date"], "Contracted Yield (% p.a.)": float(details["roi"]), "Days Held": days, "Current Value Today (₹)": round(val_today, 2)})
+            
+            df_debt = pd.DataFrame(debt_list) if debt_list else pd.DataFrame(columns=["Asset Description", "Principal Invested (₹)", "Issuance Date (YYYY-MM-DD)", "Contracted Yield (% p.a.)", "Days Held", "Current Value Today (₹)"])
+            
+            edited_df_debt = st.data_editor(
+                df_debt,
+                column_config={
+                    "Asset Description": st.column_config.TextColumn("Asset Description", placeholder="e.g. SBI Fixed Deposit", required=True),
+                    "Principal Invested (₹)": st.column_config.NumberColumn("Principal Invested (₹)", min_value=0.0, step=100.0, format="₹ %.2f", required=True),
+                    "Issuance Date (YYYY-MM-DD)": st.column_config.TextColumn("Issuance Date (YYYY-MM-DD)", placeholder="e.2024-01-15", required=True),
+                    "Contracted Yield (% p.a.)": st.column_config.NumberColumn("Contracted Yield (% p.a.)", min_value=0.0, max_value=25.0, step=0.05, format="%.2f %%"),
+                    "Days Held": st.column_config.NumberColumn("Days Held", disabled=True),
+                    "Current Value Today (₹)": st.column_config.NumberColumn("Current Value Today (₹)", disabled=True, format="₹ %.2f")
+                },
+                num_rows="dynamic",
+                use_container_width=True,
+                hide_index=True,
+                key=f"editor_db_{goal_name}"
+            )
+            
+            if not edited_df_debt.equals(df_debt):
+                new_debt_dict = {}
+                for _, row in edited_df_debt.iterrows():
+                    lbl = str(row["Asset Description"]).strip()
+                    date_str = str(row["Issuance Date (YYYY-MM-DD)"]).strip()
+                    # Validate date formatting integrity constraints before processing entry updates
+                    if lbl and date_str and pd.notna(row["Principal Invested (₹)"]):
+                        try:
+                            datetime.strptime(date_str, "%Y-%m-%d")
+                        except:
+                            date_str = str(date.today())
+                        new_debt_dict[lbl] = {"principal": float(row["Principal Invested (₹)"]), "start_date": date_str, "roi": float(row["Contracted Yield (% p.a.)"]) if pd.notna(row["Contracted Yield (% p.a.)"]) else 0.0}
+                goal_dict["debt"] = new_debt_dict
+                trigger_save()
+                st.rerun()
 
-            # --- CUMULATIVE FORECAST BREAKDOWN ---
+            # --- CUMULATIVE FORECAST MATRIX BREAKDOWN ---
             st.markdown("###")
             st.markdown("### 📊 Compound Projection Profile")
             proj_data = {
@@ -376,11 +404,10 @@ else:
             }
             st.table(pd.DataFrame(proj_data))
 
-            # --- ANNUALIZED DYNAMIC REAL CASH OUTFLOW TIMELINE ---
+            # --- DRAWDOWN MODEL DISTRIBUTION MATRIX ---
             st.markdown("---")
             st.markdown("### 📉 Annualized Dynamic Real Cash Outflow Timeline")
-            st.caption("Simulate portfolio drawdowns during the distribution phase, tracking annual cash outflows alongside portfolio longevity.")
-
+            
             ret_conf = goal_dict["retirement_config"]
             c_p1, c_p2, c_p3, c_p4 = st.columns(4)
             with c_p1:
@@ -429,17 +456,14 @@ else:
             df_sim = pd.DataFrame(sim_records)
 
             chart_data = df_sim[["Timeline Index", "Annual Real Cash Outflow (₹)", "Closing Portfolio Balance (₹)"]].copy()
-            chart_data = chart_data.rename(columns={
-                "Annual Real Cash Outflow (₹)": "Annual Outflow",
-                "Closing Portfolio Balance (₹)": "Remaining Portfolio Value"
-            })
+            chart_data = chart_data.rename(columns={"Annual Real Cash Outflow (₹)": "Annual Outflow", "Closing Portfolio Balance (₹)": "Remaining Portfolio Value"})
             
             ch_col1, ch_col2 = st.columns([3, 2])
             with ch_col1:
-                st.markdown("**Visual Trajectory Overlay (Outflow Bars vs Portfolio Value Line)**")
+                st.markdown("**Visual Trajectory Overlay**")
                 st.line_chart(chart_data.set_index("Timeline Index"), y=["Remaining Portfolio Value", "Annual Outflow"], color=["#4FD1C5", "#E53E3E"])
             with ch_col2:
-                st.markdown("**Standalone Outflow Volume Trend**")
+                st.markdown("**Outflow Growth Scale**")
                 st.bar_chart(chart_data.set_index("Timeline Index"), y="Annual Outflow", color="#E53E3E")
 
             st.markdown("#### Detailed Drawdown Ledger")
